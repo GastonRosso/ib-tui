@@ -46,6 +46,7 @@ describe("PortfolioView", () => {
         totalPortfolioValue: 0,
         accountDailyPnL: 0,
         cashBalance: 0,
+        marketValueHistory: [],
         subscribePortfolio: mockSubscribe,
       };
       return selector ? selector(state as never) : state;
@@ -64,6 +65,7 @@ describe("PortfolioView", () => {
         totalPortfolioValue: 15050,
         accountDailyPnL: 75.25,
         cashBalance: 0,
+        marketValueHistory: [],
         subscribePortfolio: mockSubscribe,
       };
       return selector ? selector(state as never) : state;
@@ -85,6 +87,7 @@ describe("PortfolioView", () => {
         totalPortfolioValue: 15050,
         accountDailyPnL: 75.25,
         cashBalance: 0,
+        marketValueHistory: [],
         subscribePortfolio: mockSubscribe,
       };
       return selector ? selector(state as never) : state;
@@ -109,6 +112,7 @@ describe("PortfolioView", () => {
         totalPortfolioValue: 15050,
         accountDailyPnL: 75.25,
         cashBalance: 0,
+        marketValueHistory: [],
         subscribePortfolio: mockSubscribe,
       };
       return selector ? selector(state as never) : state;
@@ -131,6 +135,7 @@ describe("PortfolioView", () => {
         totalPortfolioValue: 10000,
         accountDailyPnL: 100,
         cashBalance: 0,
+        marketValueHistory: [],
         subscribePortfolio: mockSubscribe,
       };
       return selector ? selector(state as never) : state;
@@ -154,6 +159,7 @@ describe("PortfolioView", () => {
         totalPortfolioValue: 45150,
         accountDailyPnL: 225.75,
         cashBalance: 0,
+        marketValueHistory: [],
         subscribePortfolio: mockSubscribe,
       };
       return selector ? selector(state as never) : state;
@@ -179,6 +185,7 @@ describe("PortfolioView", () => {
         totalPortfolioValue: 15050,
         accountDailyPnL: -150.5,
         cashBalance: 0,
+        marketValueHistory: [],
         subscribePortfolio: mockSubscribe,
       };
       return selector ? selector(state as never) : state;
@@ -204,6 +211,7 @@ describe("PortfolioView", () => {
         totalPortfolioValue: 15050,
         accountDailyPnL: 250.0,
         cashBalance: 0,
+        marketValueHistory: [],
         subscribePortfolio: mockSubscribe,
       };
       return selector ? selector(state as never) : state;

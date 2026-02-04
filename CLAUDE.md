@@ -27,15 +27,12 @@ npm run test -- --grep "test name"  # Run a single test by name
 - **src/tui/** - Terminal UI components using Ink (React for CLI)
 - **src/broker/** - Broker abstraction layer with IBKR implementation (uses `@stoqey/ib`)
 - **src/state/** - Application state management with Zustand
-- **src/commands/** - User command handlers (extensibility point)
 
 ### Key Design Principles
 
 1. **Broker Abstraction**: All broker interactions go through interfaces in `src/broker/`. This allows swapping IBKR for other brokers or mock implementations for testing.
 
-2. **Command Pattern**: User actions are implemented as commands in `src/commands/`. Each command is self-contained and registered with the command system.
-
-3. **Event-Driven**: IBKR API is asynchronous and event-based. The application uses an event bus to decouple API responses from UI updates.
+2. **Event-Driven**: IBKR API is asynchronous and event-based. The application uses an event bus to decouple API responses from UI updates.
 
 4. **View/Model Separation**: TUI views subscribe to state changes and re-render automatically. Business logic stays out of view components.
 
@@ -48,3 +45,15 @@ The app connects to TWS (Trader Workstation) or IB Gateway via their socket API 
 1. **Research Before Implementing**: Before implementing non-trivial algorithms or patterns (e.g., hidden input, encryption, parsing), search for the current best practices and existing libraries. Prefer well-maintained libraries over custom implementations unless there's a specific reason not to.
 
 2. **Prefer `type` over `interface`**: Use `type` instead of `interface` for type definitions throughout the codebase.
+
+### Feature Development Workflow
+
+1. **Create feature branch**: `git checkout -b feature/<feature-name>`
+2. **Implement feature**: Follow existing patterns in the codebase
+3. **Document feature**: Create `docs/features/<feature-name>.md` with:
+   - Feature description
+   - Usage instructions
+   - Implementation notes
+4. **Test**: Ensure all tests pass (`npm run test`)
+5. **Commit**: Descriptive commit message
+6. **Merge**: PR or merge to main when complete

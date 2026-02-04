@@ -2,6 +2,7 @@ import React, { useEffect } from "react";
 import { Box, Text } from "ink";
 import { useStore } from "../state/store.js";
 import type { Position } from "../broker/types.js";
+import { MarketValueChart } from "./MarketValueChart.js";
 
 const COLUMNS = {
   ticker: 8,
@@ -171,6 +172,7 @@ export const PortfolioView: React.FC = () => {
 
   return (
     <Box flexDirection="column">
+      <MarketValueChart />
       <Box marginBottom={1}>
         <Text color="cyan" bold>
           Portfolio

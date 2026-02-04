@@ -12,6 +12,7 @@ type AppState = {
   totalPortfolioValue: number;
   accountDailyPnL: number;
   cashBalance: number;
+  marketValueHistory: number[];
 
   connect: () => Promise<void>;
   disconnect: () => Promise<void>;
@@ -28,6 +29,7 @@ export const useStore = create<AppState>((set, get) => ({
   totalPortfolioValue: 0,
   accountDailyPnL: 0,
   cashBalance: 0,
+  marketValueHistory: [],
 
   connect: async () => {
     const { broker } = get();
@@ -44,6 +46,7 @@ export const useStore = create<AppState>((set, get) => ({
           totalPortfolioValue: 0,
           accountDailyPnL: 0,
           cashBalance: 0,
+          marketValueHistory: [],
           error: "Connection lost"
         });
       });
@@ -58,7 +61,7 @@ export const useStore = create<AppState>((set, get) => ({
   disconnect: async () => {
     const { broker } = get();
     await broker.disconnect();
-    set({ connectionStatus: "disconnected", positions: [], totalPortfolioValue: 0, accountDailyPnL: 0, cashBalance: 0 });
+    set({ connectionStatus: "disconnected", positions: [], totalPortfolioValue: 0, accountDailyPnL: 0, cashBalance: 0, marketValueHistory: [] });
   },
 
   setConnectionStatus: (status) => set({ connectionStatus: status }),
@@ -67,11 +70,17 @@ export const useStore = create<AppState>((set, get) => ({
   subscribePortfolio: () => {
     const { broker } = get();
     return broker.subscribePortfolio((update) => {
-      set({
-        positions: update.positions,
-        totalPortfolioValue: update.totalPortfolioValue,
-        accountDailyPnL: update.accountDailyPnL,
-        cashBalance: update.cashBalance,
+      set((state) => {
+        const history = [...state.marketValueHistory, update.totalPortfolioValue];
+        // Keep last 300 values (~5 minutes of data at ~1 update/sec)
+        if (history.length > 300) history.shift();
+        return {
+          positions: update.positions,
+          totalPortfolioValue: update.totalPortfolioValue,
+          accountDailyPnL: update.accountDailyPnL,
+          cashBalance: update.cashBalance,
+          marketValueHistory: history,
+        };
       });
     });
   },
