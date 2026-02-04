@@ -47,6 +47,7 @@ describe("PortfolioView", () => {
         accountDailyPnL: 0,
         cashBalance: 0,
         marketValueHistory: [],
+        chartStartTime: null,
         subscribePortfolio: mockSubscribe,
       };
       return selector ? selector(state as never) : state;
@@ -66,6 +67,7 @@ describe("PortfolioView", () => {
         accountDailyPnL: 75.25,
         cashBalance: 0,
         marketValueHistory: [],
+        chartStartTime: null,
         subscribePortfolio: mockSubscribe,
       };
       return selector ? selector(state as never) : state;
@@ -88,6 +90,7 @@ describe("PortfolioView", () => {
         accountDailyPnL: 75.25,
         cashBalance: 0,
         marketValueHistory: [],
+        chartStartTime: null,
         subscribePortfolio: mockSubscribe,
       };
       return selector ? selector(state as never) : state;
@@ -113,6 +116,7 @@ describe("PortfolioView", () => {
         accountDailyPnL: 75.25,
         cashBalance: 0,
         marketValueHistory: [],
+        chartStartTime: null,
         subscribePortfolio: mockSubscribe,
       };
       return selector ? selector(state as never) : state;
@@ -136,6 +140,7 @@ describe("PortfolioView", () => {
         accountDailyPnL: 100,
         cashBalance: 0,
         marketValueHistory: [],
+        chartStartTime: null,
         subscribePortfolio: mockSubscribe,
       };
       return selector ? selector(state as never) : state;
@@ -160,6 +165,7 @@ describe("PortfolioView", () => {
         accountDailyPnL: 225.75,
         cashBalance: 0,
         marketValueHistory: [],
+        chartStartTime: null,
         subscribePortfolio: mockSubscribe,
       };
       return selector ? selector(state as never) : state;
@@ -186,6 +192,7 @@ describe("PortfolioView", () => {
         accountDailyPnL: -150.5,
         cashBalance: 0,
         marketValueHistory: [],
+        chartStartTime: null,
         subscribePortfolio: mockSubscribe,
       };
       return selector ? selector(state as never) : state;
@@ -212,6 +219,7 @@ describe("PortfolioView", () => {
         accountDailyPnL: 250.0,
         cashBalance: 0,
         marketValueHistory: [],
+        chartStartTime: null,
         subscribePortfolio: mockSubscribe,
       };
       return selector ? selector(state as never) : state;

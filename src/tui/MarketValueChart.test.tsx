@@ -21,7 +21,7 @@ describe("MarketValueChart", () => {
 
   it("renders loading state when less than 2 data points", () => {
     mockUseStore.mockImplementation((selector) => {
-      const state = { marketValueHistory: [100] };
+      const state = { marketValueHistory: [100], chartStartTime: null };
       return selector ? selector(state as never) : state;
     });
 
@@ -31,7 +31,7 @@ describe("MarketValueChart", () => {
 
   it("renders loading state when no data points", () => {
     mockUseStore.mockImplementation((selector) => {
-      const state = { marketValueHistory: [] };
+      const state = { marketValueHistory: [], chartStartTime: null };
       return selector ? selector(state as never) : state;
     });
 
@@ -41,7 +41,7 @@ describe("MarketValueChart", () => {
 
   it("renders chart when sufficient data points", () => {
     mockUseStore.mockImplementation((selector) => {
-      const state = { marketValueHistory: [100, 105, 103, 108, 110] };
+      const state = { marketValueHistory: [100, 105, 103, 108, 110], chartStartTime: Date.now() };
       return selector ? selector(state as never) : state;
     });
 
@@ -52,43 +52,44 @@ describe("MarketValueChart", () => {
     expect(frame).not.toContain("Collecting data for chart...");
   });
 
-  it("displays correct time elapsed", () => {
+  it("displays time format in header", () => {
     mockUseStore.mockImplementation((selector) => {
-      // 125 data points = 2m 5s
-      const state = { marketValueHistory: Array(125).fill(100) };
+      const state = { marketValueHistory: [100, 105], chartStartTime: Date.now() };
       return selector ? selector(state as never) : state;
     });
 
     const { lastFrame } = render(<MarketValueChart />);
     const frame = lastFrame();
 
-    expect(frame).toContain("2m 5s");
+    // Should display time format (0m 0s initially)
+    expect(frame).toMatch(/Portfolio Value \(\d+m \d+s\)/);
   });
 
-  it("displays time in minutes and seconds format", () => {
+  it("renders ASCII chart with data points", () => {
     mockUseStore.mockImplementation((selector) => {
-      // 60 data points = 1m 0s
-      const state = { marketValueHistory: Array(60).fill(100) };
+      const state = { marketValueHistory: [100, 150, 125, 175, 200, 180], chartStartTime: Date.now() };
       return selector ? selector(state as never) : state;
     });
 
     const { lastFrame } = render(<MarketValueChart />);
     const frame = lastFrame();
 
-    expect(frame).toContain("1m 0s");
+    // Chart should contain axis characters
+    expect(frame).toContain("┼");
+    expect(frame).toContain("┤");
   });
 
-  it("handles varying data points", () => {
+  it("scales chart to data range", () => {
     mockUseStore.mockImplementation((selector) => {
-      const state = { marketValueHistory: [100, 150, 125, 175, 200, 180] };
+      const state = { marketValueHistory: [1000, 1050, 1025, 1075], chartStartTime: Date.now() };
       return selector ? selector(state as never) : state;
     });
 
     const { lastFrame } = render(<MarketValueChart />);
     const frame = lastFrame();
 
-    // Chart should render without errors
-    expect(frame).toContain("Portfolio Value");
-    expect(frame).toContain("0m 6s");
+    // Should show values in the 1000 range, not starting from 0
+    expect(frame).toContain("1000.00");
+    expect(frame).toContain("1075.00");
   });
 });

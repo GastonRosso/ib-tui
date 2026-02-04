@@ -13,6 +13,7 @@ type AppState = {
   accountDailyPnL: number;
   cashBalance: number;
   marketValueHistory: number[];
+  chartStartTime: number | null;
 
   connect: () => Promise<void>;
   disconnect: () => Promise<void>;
@@ -30,6 +31,7 @@ export const useStore = create<AppState>((set, get) => ({
   accountDailyPnL: 0,
   cashBalance: 0,
   marketValueHistory: [],
+  chartStartTime: null,
 
   connect: async () => {
     const { broker } = get();
@@ -47,6 +49,7 @@ export const useStore = create<AppState>((set, get) => ({
           accountDailyPnL: 0,
           cashBalance: 0,
           marketValueHistory: [],
+          chartStartTime: null,
           error: "Connection lost"
         });
       });
@@ -61,7 +64,7 @@ export const useStore = create<AppState>((set, get) => ({
   disconnect: async () => {
     const { broker } = get();
     await broker.disconnect();
-    set({ connectionStatus: "disconnected", positions: [], totalPortfolioValue: 0, accountDailyPnL: 0, cashBalance: 0, marketValueHistory: [] });
+    set({ connectionStatus: "disconnected", positions: [], totalPortfolioValue: 0, accountDailyPnL: 0, cashBalance: 0, marketValueHistory: [], chartStartTime: null });
   },
 
   setConnectionStatus: (status) => set({ connectionStatus: status }),
@@ -71,15 +74,29 @@ export const useStore = create<AppState>((set, get) => ({
     const { broker } = get();
     return broker.subscribePortfolio((update) => {
       set((state) => {
-        const history = [...state.marketValueHistory, update.totalPortfolioValue];
-        // Keep last 300 values (~5 minutes of data at ~1 update/sec)
-        if (history.length > 300) history.shift();
+        let history = state.marketValueHistory;
+        let startTime = state.chartStartTime;
+        const newValue = update.totalPortfolioValue;
+        const lastValue = history[history.length - 1];
+
+        // Only add if value is non-zero and different from last value
+        if (newValue > 0 && newValue !== lastValue) {
+          history = [...history, newValue];
+          // Set start time on first data point
+          if (startTime === null) {
+            startTime = Date.now();
+          }
+          // Keep last 300 values (~5 minutes of data at ~1 update/sec)
+          if (history.length > 300) history.shift();
+        }
+
         return {
           positions: update.positions,
           totalPortfolioValue: update.totalPortfolioValue,
           accountDailyPnL: update.accountDailyPnL,
           cashBalance: update.cashBalance,
           marketValueHistory: history,
+          chartStartTime: startTime,
         };
       });
     });
