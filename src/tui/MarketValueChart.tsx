@@ -1,9 +1,11 @@
 import React, { useState, useEffect } from "react";
-import { Box, Text } from "ink";
+import { Box, Text, useStdout } from "ink";
 import asciichart from "asciichart";
 import { useStore } from "../state/store.js";
 
-type Props = { height?: number; width?: number };
+type Props = { height?: number };
+
+const LABEL_WIDTH = 13; // Width of Y-axis labels (e.g., "    $138,914 ")
 
 const formatCurrency = (value: number): string => {
   // Round to nearest dollar and format with commas
@@ -11,10 +13,16 @@ const formatCurrency = (value: number): string => {
   return "$" + rounded.toLocaleString("en-US");
 };
 
-export const MarketValueChart: React.FC<Props> = ({ height = 5, width = 60 }) => {
+export const MarketValueChart: React.FC<Props> = ({ height = 5 }) => {
   const marketValueHistory = useStore((s) => s.marketValueHistory);
   const chartStartTime = useStore((s) => s.chartStartTime);
   const [elapsed, setElapsed] = useState(0);
+  const { stdout } = useStdout();
+
+  // Get terminal width, default to 80 if not available
+  const terminalWidth = stdout?.columns ?? 80;
+  // Chart width = terminal width - label width - small margin
+  const chartWidth = Math.max(20, terminalWidth - LABEL_WIDTH - 2);
 
   useEffect(() => {
     if (chartStartTime === null) {
@@ -33,13 +41,13 @@ export const MarketValueChart: React.FC<Props> = ({ height = 5, width = 60 }) =>
     return <Text dimColor>Collecting data for chart...</Text>;
   }
 
-  // Sample data to fit width (take every Nth point)
-  const step = Math.max(1, Math.floor(marketValueHistory.length / width));
-  const sampled = marketValueHistory.filter((_, i) => i % step === 0);
+  // Take only the last N points to fit the chart width
+  // This ensures old points don't change position as new data arrives
+  const dataPoints = marketValueHistory.slice(-chartWidth);
 
-  const chart = asciichart.plot(sampled, {
+  const chart = asciichart.plot(dataPoints, {
     height,
-    format: (x: number) => formatCurrency(x).padStart(12),
+    format: (x: number) => formatCurrency(x).padStart(LABEL_WIDTH),
   });
   const minutes = Math.floor(elapsed / 60);
   const seconds = elapsed % 60;
