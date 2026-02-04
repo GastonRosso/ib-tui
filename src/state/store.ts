@@ -81,13 +81,20 @@ export const useStore = create<AppState>((set, get) => ({
 
         // Only add if value is non-zero and different from last value
         if (newValue > 0 && newValue !== lastValue) {
-          history = [...history, newValue];
-          // Set start time on first data point
-          if (startTime === null) {
-            startTime = Date.now();
+          // Skip values with dramatic changes (>5%) to filter out partial portfolio loads
+          // during initial connection when positions arrive one by one
+          const changePercent = lastValue ? Math.abs(newValue - lastValue) / lastValue : 0;
+          const isStable = lastValue === undefined || changePercent < 0.05;
+
+          if (isStable) {
+            history = [...history, newValue];
+            // Set start time on first stable data point
+            if (startTime === null) {
+              startTime = Date.now();
+            }
+            // Keep last 300 values (~5 minutes of data at ~1 update/sec)
+            if (history.length > 300) history.shift();
           }
-          // Keep last 300 values (~5 minutes of data at ~1 update/sec)
-          if (history.length > 300) history.shift();
         }
 
         return {
