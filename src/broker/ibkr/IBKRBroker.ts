@@ -135,6 +135,7 @@ export class IBKRBroker implements Broker {
     let totalPortfolioValue = 0;
     let accountDailyPnL = 0;
     let cashBalance = 0;
+    let initialLoadComplete = false;
 
     const pnlReqId = this.getNextReqId();
     const pnlSingleReqIds = new Map<number, number>();
@@ -145,6 +146,7 @@ export class IBKRBroker implements Broker {
         totalPortfolioValue,
         accountDailyPnL,
         cashBalance,
+        initialLoadComplete,
       });
     };
 
@@ -260,10 +262,17 @@ export class IBKRBroker implements Broker {
       }
     };
 
+    const onAccountDownloadEnd = (accountName: string) => {
+      if (accountName !== this.accountId && this.accountId) return;
+      initialLoadComplete = true;
+      emitUpdate();
+    };
+
     api.on(EventName.updatePortfolio, onPortfolioUpdate);
     api.on(EventName.pnl, onPnL);
     api.on(EventName.pnlSingle, onPnLSingle);
     api.on(EventName.updateAccountValue, onAccountValue);
+    api.on(EventName.accountDownloadEnd, onAccountDownloadEnd);
 
     api.reqAccountUpdates(true, this.accountId);
     api.reqPnL(pnlReqId, this.accountId, "");
@@ -273,6 +282,7 @@ export class IBKRBroker implements Broker {
       api.removeListener(EventName.pnl, onPnL);
       api.removeListener(EventName.pnlSingle, onPnLSingle);
       api.removeListener(EventName.updateAccountValue, onAccountValue);
+      api.removeListener(EventName.accountDownloadEnd, onAccountDownloadEnd);
 
       api.reqAccountUpdates(false, this.accountId);
       api.cancelPnL(pnlReqId);

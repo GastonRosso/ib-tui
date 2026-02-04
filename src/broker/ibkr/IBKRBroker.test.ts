@@ -115,6 +115,7 @@ describe("IBKRBroker", () => {
         totalPortfolioValue: 15050,
         accountDailyPnL: 0,
         cashBalance: 0,
+        initialLoadComplete: false,
       });
     });
 

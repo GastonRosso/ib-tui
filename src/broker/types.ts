@@ -57,6 +57,7 @@ export type PortfolioUpdate = {
   totalPortfolioValue: number;
   accountDailyPnL: number;
   cashBalance: number;
+  initialLoadComplete: boolean;
 };
 
 export type Broker = {

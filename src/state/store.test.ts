@@ -28,6 +28,7 @@ vi.mock("../broker/ibkr/IBKRBroker.js", () => {
           totalPortfolioValue: 15050,
           accountDailyPnL: 75.25,
           cashBalance: 5000,
+          initialLoadComplete: true,
         });
         return vi.fn();
       }),
