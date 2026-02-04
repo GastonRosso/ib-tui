@@ -6,6 +6,7 @@ import { useStore } from "../state/store.js";
 type Props = { height?: number };
 
 const LABEL_WIDTH = 13; // Width of Y-axis labels (e.g., "    $138,914 ")
+const AXIS_WIDTH = 2;   // Width of axis characters (┼ and space)
 
 const formatCurrency = (value: number): string => {
   // Round to nearest dollar and format with commas
@@ -21,8 +22,8 @@ export const MarketValueChart: React.FC<Props> = ({ height = 5 }) => {
 
   // Get terminal width, default to 80 if not available
   const terminalWidth = stdout?.columns ?? 80;
-  // Chart width = terminal width - label width - small margin
-  const chartWidth = Math.max(20, terminalWidth - LABEL_WIDTH - 2);
+  // Data points width = terminal - labels - axis - safety margin
+  const maxDataPoints = Math.max(20, terminalWidth - LABEL_WIDTH - AXIS_WIDTH - 5);
 
   useEffect(() => {
     if (chartStartTime === null) {
@@ -43,7 +44,7 @@ export const MarketValueChart: React.FC<Props> = ({ height = 5 }) => {
 
   // Take only the last N points to fit the chart width
   // This ensures old points don't change position as new data arrives
-  const dataPoints = marketValueHistory.slice(-chartWidth);
+  const dataPoints = marketValueHistory.slice(-maxDataPoints);
 
   const chart = asciichart.plot(dataPoints, {
     height,
@@ -55,7 +56,7 @@ export const MarketValueChart: React.FC<Props> = ({ height = 5 }) => {
   return (
     <Box flexDirection="column" marginBottom={1}>
       <Text bold color="cyan">Portfolio Value ({minutes}m {seconds}s)</Text>
-      <Text>{chart}</Text>
+      <Text wrap="truncate">{chart}</Text>
     </Box>
   );
 };
