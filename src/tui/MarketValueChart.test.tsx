@@ -88,8 +88,8 @@ describe("MarketValueChart", () => {
     const { lastFrame } = render(<MarketValueChart />);
     const frame = lastFrame();
 
-    // Should show values in the 1000 range, not starting from 0
-    expect(frame).toContain("1000.00");
-    expect(frame).toContain("1075.00");
+    // Should show values in the 1000 range with currency formatting
+    expect(frame).toContain("$1,000");
+    expect(frame).toContain("$1,075");
   });
 });

@@ -76,7 +76,8 @@ export const useStore = create<AppState>((set, get) => ({
       set((state) => {
         let history = state.marketValueHistory;
         let startTime = state.chartStartTime;
-        const newValue = update.totalPortfolioValue;
+        // Include cash in total value for chart
+        const newValue = update.totalPortfolioValue + update.cashBalance;
         const lastValue = history[history.length - 1];
 
         // Only start recording after initial portfolio load is complete

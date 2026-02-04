@@ -5,7 +5,13 @@ import { useStore } from "../state/store.js";
 
 type Props = { height?: number; width?: number };
 
-export const MarketValueChart: React.FC<Props> = ({ height = 8, width = 60 }) => {
+const formatCurrency = (value: number): string => {
+  // Round to nearest dollar and format with commas
+  const rounded = Math.round(value);
+  return "$" + rounded.toLocaleString("en-US");
+};
+
+export const MarketValueChart: React.FC<Props> = ({ height = 5, width = 60 }) => {
   const marketValueHistory = useStore((s) => s.marketValueHistory);
   const chartStartTime = useStore((s) => s.chartStartTime);
   const [elapsed, setElapsed] = useState(0);
@@ -31,7 +37,10 @@ export const MarketValueChart: React.FC<Props> = ({ height = 8, width = 60 }) =>
   const step = Math.max(1, Math.floor(marketValueHistory.length / width));
   const sampled = marketValueHistory.filter((_, i) => i % step === 0);
 
-  const chart = asciichart.plot(sampled, { height });
+  const chart = asciichart.plot(sampled, {
+    height,
+    format: (x: number) => formatCurrency(x).padStart(12),
+  });
   const minutes = Math.floor(elapsed / 60);
   const seconds = elapsed % 60;
 
