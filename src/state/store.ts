@@ -14,6 +14,9 @@ type AppState = {
   cashBalance: number;
   marketValueHistory: number[];
   chartStartTime: number | null;
+  lastHistoryTimestamp: number | null;
+  chartStartValue: number | null;
+  initialLoadComplete: boolean;
 
   connect: () => Promise<void>;
   disconnect: () => Promise<void>;
@@ -32,6 +35,9 @@ export const useStore = create<AppState>((set, get) => ({
   cashBalance: 0,
   marketValueHistory: [],
   chartStartTime: null,
+  lastHistoryTimestamp: null,
+  chartStartValue: null,
+  initialLoadComplete: false,
 
   connect: async () => {
     const { broker } = get();
@@ -50,6 +56,9 @@ export const useStore = create<AppState>((set, get) => ({
           cashBalance: 0,
           marketValueHistory: [],
           chartStartTime: null,
+          lastHistoryTimestamp: null,
+          chartStartValue: null,
+          initialLoadComplete: false,
           error: "Connection lost"
         });
       });
@@ -64,7 +73,18 @@ export const useStore = create<AppState>((set, get) => ({
   disconnect: async () => {
     const { broker } = get();
     await broker.disconnect();
-    set({ connectionStatus: "disconnected", positions: [], totalPortfolioValue: 0, accountDailyPnL: 0, cashBalance: 0, marketValueHistory: [], chartStartTime: null });
+    set({
+      connectionStatus: "disconnected",
+      positions: [],
+      totalPortfolioValue: 0,
+      accountDailyPnL: 0,
+      cashBalance: 0,
+      marketValueHistory: [],
+      chartStartTime: null,
+      lastHistoryTimestamp: null,
+      chartStartValue: null,
+      initialLoadComplete: false,
+    });
   },
 
   setConnectionStatus: (status) => set({ connectionStatus: status }),
@@ -74,21 +94,47 @@ export const useStore = create<AppState>((set, get) => ({
     const { broker } = get();
     return broker.subscribePortfolio((update) => {
       set((state) => {
+        // throttle to roughly once per second and avoid oversampling the feed
+        const historyLimit = 300;
+        const sampleIntervalMs = 1000;
+
         let history = state.marketValueHistory;
         let startTime = state.chartStartTime;
+        let lastHistoryTimestamp = state.lastHistoryTimestamp;
+        let chartStartValue = state.chartStartValue;
+
         // Include cash in total value for chart
         const newValue = update.totalPortfolioValue + update.cashBalance;
+        const now = Date.now();
         const lastValue = history[history.length - 1];
 
-        // Only start recording after initial portfolio load is complete
-        if (update.initialLoadComplete && newValue > 0 && newValue !== lastValue) {
-          history = [...history, newValue];
-          // Set start time on first data point
-          if (startTime === null) {
-            startTime = Date.now();
+        const intervalElapsed =
+          lastHistoryTimestamp === null || now - lastHistoryTimestamp >= sampleIntervalMs;
+
+        if (update.initialLoadComplete && newValue > 0) {
+          // if we get multiple updates within the same second, keep only the freshest value
+          if (!intervalElapsed && history.length > 0) {
+            history = [...history.slice(0, -1), newValue];
+          } else if (intervalElapsed || newValue !== lastValue) {
+            history = [...history, newValue];
+            lastHistoryTimestamp = now;
+
+            // Set start time on first data point
+            if (startTime === null) {
+              startTime = now;
+              chartStartValue = newValue;
+            }
+
+            // Keep last 300 values (~5 minutes of data at ~1 update/sec)
+            if (history.length > historyLimit) {
+              const excess = history.length - historyLimit;
+              history = history.slice(-historyLimit);
+              if (startTime !== null) {
+                startTime += excess * sampleIntervalMs;
+              }
+              // Keep chartStartValue as original baseline
+            }
           }
-          // Keep last 300 values (~5 minutes of data at ~1 update/sec)
-          if (history.length > 300) history.shift();
         }
 
         return {
@@ -98,6 +144,9 @@ export const useStore = create<AppState>((set, get) => ({
           cashBalance: update.cashBalance,
           marketValueHistory: history,
           chartStartTime: startTime,
+          lastHistoryTimestamp,
+          chartStartValue,
+          initialLoadComplete: update.initialLoadComplete,
         };
       });
     });

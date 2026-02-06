@@ -162,10 +162,11 @@ export class IBKRBroker implements Broker {
     ) => {
       if (accountName !== this.accountId && this.accountId) return;
 
-      const conId = contract.conId ?? 0;
+      // Guard against missing contract ids to avoid collapsing distinct positions
+      if (contract.conId === undefined || contract.conId === null) return;
+      const conId = contract.conId;
       const existing = positions.get(conId);
 
-      // Preserve real-time data from pnlSingle if we already have it
       const position: Position = {
         symbol: contract.symbol ?? "",
         quantity: pos,
@@ -217,31 +218,23 @@ export class IBKRBroker implements Broker {
 
     const onPnLSingle = (
       reqId: number,
-      pos: number,
+      _pos: number,
       dailyPnL: number,
       unrealizedPnL: number | undefined,
       realizedPnL: number | undefined,
-      value: number
+      _value: number
     ) => {
       for (const [conId, rid] of pnlSingleReqIds.entries()) {
         if (rid === reqId) {
           const existing = positions.get(conId);
           if (existing) {
-            // Update position with real-time data from pnlSingle
+            // Use pnlSingle only for P&L fields. Price/value and size remain sourced from updatePortfolio.
             positions.set(conId, {
               ...existing,
-              quantity: pos,
-              marketValue: value,
-              marketPrice: pos !== 0 ? value / pos : 0,
               unrealizedPnL: unrealizedPnL ?? existing.unrealizedPnL,
               realizedPnL: realizedPnL ?? existing.realizedPnL,
               dailyPnL,
             });
-
-            totalPortfolioValue = Array.from(positions.values()).reduce(
-              (sum, p) => sum + p.marketValue,
-              0
-            );
           }
           emitUpdate();
           break;

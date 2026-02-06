@@ -49,6 +49,7 @@ describe("PortfolioView", () => {
         marketValueHistory: [],
         chartStartTime: null,
         subscribePortfolio: mockSubscribe,
+        initialLoadComplete: false,
       };
       return selector ? selector(state as never) : state;
     });
@@ -56,7 +57,7 @@ describe("PortfolioView", () => {
     const { lastFrame } = render(<PortfolioView />);
 
     expect(lastFrame()).toContain("Portfolio");
-    expect(lastFrame()).toContain("Loading positions...");
+    expect(lastFrame()).toContain("Loading full portfolio...");
   });
 
   it("renders position rows correctly", () => {
@@ -69,6 +70,7 @@ describe("PortfolioView", () => {
         marketValueHistory: [],
         chartStartTime: null,
         subscribePortfolio: mockSubscribe,
+        initialLoadComplete: true,
       };
       return selector ? selector(state as never) : state;
     });
@@ -92,6 +94,7 @@ describe("PortfolioView", () => {
         marketValueHistory: [],
         chartStartTime: null,
         subscribePortfolio: mockSubscribe,
+        initialLoadComplete: true,
       };
       return selector ? selector(state as never) : state;
     });
@@ -118,6 +121,7 @@ describe("PortfolioView", () => {
         marketValueHistory: [],
         chartStartTime: null,
         subscribePortfolio: mockSubscribe,
+        initialLoadComplete: true,
       };
       return selector ? selector(state as never) : state;
     });
@@ -142,6 +146,7 @@ describe("PortfolioView", () => {
         marketValueHistory: [],
         chartStartTime: null,
         subscribePortfolio: mockSubscribe,
+        initialLoadComplete: true,
       };
       return selector ? selector(state as never) : state;
     });
@@ -167,6 +172,7 @@ describe("PortfolioView", () => {
         marketValueHistory: [],
         chartStartTime: null,
         subscribePortfolio: mockSubscribe,
+        initialLoadComplete: true,
       };
       return selector ? selector(state as never) : state;
     });
@@ -194,6 +200,7 @@ describe("PortfolioView", () => {
         marketValueHistory: [],
         chartStartTime: null,
         subscribePortfolio: mockSubscribe,
+        initialLoadComplete: true,
       };
       return selector ? selector(state as never) : state;
     });
@@ -221,6 +228,7 @@ describe("PortfolioView", () => {
         marketValueHistory: [],
         chartStartTime: null,
         subscribePortfolio: mockSubscribe,
+        initialLoadComplete: true,
       };
       return selector ? selector(state as never) : state;
     });

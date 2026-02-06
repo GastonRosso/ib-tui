@@ -48,7 +48,7 @@ describe("MarketValueChart", () => {
     const { lastFrame } = render(<MarketValueChart />);
     const frame = lastFrame();
 
-    expect(frame).toContain("Portfolio Value");
+    expect(frame).toContain("Portfolio Δ since connect");
     expect(frame).not.toContain("Collecting data for chart...");
   });
 
@@ -62,7 +62,7 @@ describe("MarketValueChart", () => {
     const frame = lastFrame();
 
     // Should display time format (0m 0s initially)
-    expect(frame).toMatch(/Portfolio Value \(\d+m \d+s\)/);
+    expect(frame).toMatch(/Portfolio Δ since connect \(\d+m \d+s\)/);
   });
 
   it("renders ASCII chart with data points", () => {
@@ -88,8 +88,11 @@ describe("MarketValueChart", () => {
     const { lastFrame } = render(<MarketValueChart />);
     const frame = lastFrame();
 
-    // Should show values in the 1000 range with currency formatting
-    expect(frame).toContain("$1,000");
-    expect(frame).toContain("$1,075");
+    // Should show signed deltas with currency formatting (two decimals)
+    expect(frame).toMatch(/\+\$\d[\d,]*\.\d{2}/);
+    expect(frame).toMatch(/\+\$7[0-9]\.\d{2}/); // around +$75
+    // Axis labels include both positive and negative padding
+    expect(frame).toMatch(/\+\$[0-9,]+\.\d{2} [┤┼]/);
+    expect(frame).toMatch(/-\$[0-9,]+\.\d{2} [┤┼]/);
   });
 });

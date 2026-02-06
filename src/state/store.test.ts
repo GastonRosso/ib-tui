@@ -45,6 +45,11 @@ describe("store", () => {
       totalPortfolioValue: 0,
       accountDailyPnL: 0,
       cashBalance: 0,
+      marketValueHistory: [],
+      chartStartTime: null,
+      lastHistoryTimestamp: null,
+      chartStartValue: null,
+      initialLoadComplete: false,
     });
   });
 

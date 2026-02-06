@@ -152,20 +152,20 @@ const SummaryRow: React.FC<{
 };
 
 export const PortfolioView: React.FC = () => {
-  const { positions, totalPortfolioValue, accountDailyPnL, cashBalance, subscribePortfolio } = useStore();
+  const { positions, totalPortfolioValue, accountDailyPnL, cashBalance, subscribePortfolio, initialLoadComplete } = useStore();
 
   useEffect(() => {
     const unsubscribe = subscribePortfolio();
     return () => unsubscribe();
   }, [subscribePortfolio]);
 
-  if (positions.length === 0) {
+  if (!initialLoadComplete) {
     return (
       <Box flexDirection="column">
         <Text color="cyan" bold>
           Portfolio
         </Text>
-        <Text dimColor>Loading positions...</Text>
+        <Text dimColor>Loading full portfolio...</Text>
       </Box>
     );
   }

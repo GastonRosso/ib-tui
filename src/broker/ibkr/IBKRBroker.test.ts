@@ -186,10 +186,58 @@ describe("IBKRBroker", () => {
       );
 
       const pnlSingleReqId = mockApi.reqPnLSingle.mock.calls[0][0];
-      mockApi.emit(EventName.pnlSingle, pnlSingleReqId, 100, 75.25, 550, 0, 15050);
+      mockApi.emit(EventName.pnlSingle, pnlSingleReqId, 100, 75.25, 550, 0, 12345);
 
       const lastCall = callback.mock.calls[callback.mock.calls.length - 1][0];
       expect(lastCall.positions[0].dailyPnL).toBe(75.25);
+      // market value stays sourced from updatePortfolio
+      expect(lastCall.positions[0].marketValue).toBe(15050);
+      expect(lastCall.positions[0].marketPrice).toBe(150.5);
+    });
+
+    it("keeps market value from updatePortfolio even when pnlSingle value differs", () => {
+      const callback = vi.fn();
+      broker.subscribePortfolio(callback);
+
+      const contract = {
+        symbol: "AAPL",
+        conId: 265598,
+        currency: "USD",
+      };
+
+      mockApi.emit(
+        EventName.updatePortfolio,
+        contract,
+        100,
+        150.5,
+        15050,
+        145.0,
+        550,
+        0,
+        "DU123456"
+      );
+
+      const pnlSingleReqId = mockApi.reqPnLSingle.mock.calls[0][0];
+      mockApi.emit(EventName.pnlSingle, pnlSingleReqId, 100, 10, 550, 0, 14900);
+
+      const afterPnlSingle = callback.mock.calls[callback.mock.calls.length - 1][0];
+      expect(afterPnlSingle.positions[0].marketValue).toBe(15050);
+
+      mockApi.emit(
+        EventName.updatePortfolio,
+        contract,
+        100,
+        151.0,
+        15100,
+        145.0,
+        600,
+        0,
+        "DU123456"
+      );
+
+      const afterPortfolioUpdate = callback.mock.calls[callback.mock.calls.length - 1][0];
+      expect(afterPortfolioUpdate.positions[0].marketValue).toBe(15100);
+      expect(afterPortfolioUpdate.positions[0].marketPrice).toBe(151.0);
     });
 
     it("removes position when quantity becomes zero", () => {

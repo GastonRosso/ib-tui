@@ -60,26 +60,27 @@ The `subscribePortfolio()` method combines multiple IBKR data streams:
 
 | API Call | Event | Data | Update Frequency |
 |----------|-------|------|------------------|
-| `reqAccountUpdates` | `updatePortfolio` | symbol, avgCost, currency, conId | On significant changes |
+| `reqAccountUpdates` | `updatePortfolio` | symbol, avgCost, currency, conId, quantity, marketPrice, marketValue | On portfolio/account updates |
 | `reqPnL` | `pnl` | accountDailyPnL | Every second |
-| `reqPnLSingle` | `pnlSingle` | dailyPnL, unrealizedPnL, marketValue, marketPrice | Every second |
+| `reqPnLSingle` | `pnlSingle` | dailyPnL, unrealizedPnL, realizedPnL | Usually every second |
 | `reqAccountUpdates` | `updateAccountValue` | cashBalance | On changes |
+| `reqAccountUpdates` | `accountDownloadEnd` | initial load complete flag | End of initial snapshot |
 
-Key insight: `reqPnLSingle` provides real-time streaming for most fields. We use `updatePortfolio` only for static data (symbol, avgCost, currency) and let `pnlSingle` drive all real-time updates.
+Key insight: each field now has one source of truth to avoid stream races. `updatePortfolio` owns valuation and size fields, `pnlSingle` owns per-position PnL fields, and `pnl` owns account-level day PnL.
 
 **Position Data Merge Logic:**
 
 ```
-1. updatePortfolio fires → creates position with static data
+1. updatePortfolio fires → creates/updates position static + valuation fields
 2. reqPnLSingle(conId) starts for each position
 3. pnlSingle fires every second → updates:
-   - marketValue (from value)
-   - marketPrice (calculated: value / pos)
-   - unrealizedPnL
    - dailyPnL
+   - unrealizedPnL
    - realizedPnL
-4. If updatePortfolio fires again → preserves existing real-time data
+4. updatePortfolio remains authoritative for quantity/marketPrice/marketValue
 ```
+
+For full details (event payloads, merge ownership, and known behaviors), see `/Users/gastonrosso/Projects/ib/docs/ibkr-portfolio-streams.md`.
 
 ### 3. State Management (`src/state/store.ts`)
 
@@ -130,9 +131,9 @@ The store bridges broker events to React components. When `subscribePortfolio()`
 │                    IBKRBroker                               │
 │                                                             │
 │  Subscriptions:                                             │
-│  ├─ reqAccountUpdates → updatePortfolio (static data)       │
+│  ├─ reqAccountUpdates → updatePortfolio (positions + values)│
 │  ├─ reqPnL → pnl (account daily P&L)                        │
-│  ├─ reqPnLSingle → pnlSingle (real-time position data)      │
+│  ├─ reqPnLSingle → pnlSingle (position P&L fields)          │
 │  └─ updateAccountValue (cash balance)                       │
 │                                                             │
 │  Consolidates into PortfolioUpdate callback                 │
