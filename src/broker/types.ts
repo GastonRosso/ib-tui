@@ -56,11 +56,9 @@ export type PortfolioUpdate = {
   positions: Position[];
   positionsMarketValue: number;
   totalEquity: number;
-  accountDailyPnL: number;
   cashBalance: number;
   initialLoadComplete: boolean;
-  positionPnlReady: boolean;
-  accountPnlReady: boolean;
+  lastPortfolioUpdateAt: number;
 };
 
 export type Broker = {

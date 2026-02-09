@@ -1,26 +1,24 @@
-# IBKR Portfolio Streams (Detailed)
+# IBKR Portfolio Streams (Account-Updates-Only Model)
 
-This document describes every Interactive Brokers stream currently consumed by the app for portfolio rendering, what fields we extract from each stream, and how they are merged.
+This document describes the Interactive Brokers streams consumed by the app for portfolio rendering.
 
 Scope:
 - Runtime path: `subscribePortfolio()` in `src/broker/ibkr/IBKRBroker.ts`
 - Store path: `src/state/store.ts`
-- UI consumers: `src/tui/PortfolioView.tsx` and `src/tui/MarketValueChart.tsx`
+- UI consumer: `src/tui/PortfolioView.tsx`
 - Debug module: `src/broker/ibkr/debug.ts`
 
-## 1) Subscriptions Started
+## 1) Subscription
 
-When `subscribePortfolio()` starts, the broker opens these IBKR subscriptions:
+When `subscribePortfolio()` starts, the broker opens one IBKR subscription:
 
 1. `reqAccountUpdates(true, accountId)`
-2. `reqPnL(pnlReqId, accountId, "")`
-3. `reqPnLSingle(reqId, accountId, "", conId)` for each active position discovered from `updatePortfolio`
 
-On unsubscribe, the broker removes listeners and cancels:
+On unsubscribe:
 
 1. `reqAccountUpdates(false, accountId)`
-2. `cancelPnL(pnlReqId)`
-3. `cancelPnLSingle(reqId)` for all requested per-position streams
+
+No other subscriptions (`reqPnL`, `reqPnLSingle`) are used in this simplified model.
 
 ## 2) Events Consumed and Fields Used
 
@@ -34,46 +32,19 @@ Consumed event payload:
 - `marketPrice`
 - `marketValue`
 - `avgCost`
-- `unrealizedPnL` (optional fallback)
-- `realizedPnL` (optional fallback)
+- `unrealizedPnL` (optional)
+- `realizedPnL` (optional)
 - `accountName` (filtered by selected account)
 
 Used for:
 - Position identity and lifecycle (create/update/remove)
 - Position static metadata (`symbol`, `currency`, `avgCost`)
 - Position size and valuation (`quantity`, `marketPrice`, `marketValue`)
+- Unrealized and realized PnL
 
 Important:
-- This stream is the canonical source for `quantity`, `marketPrice`, and `marketValue`.
-- If `pos === 0`, the position is removed and its `reqPnLSingle` is cancelled.
-
-### `pnl` (from `reqPnL`)
-
-Consumed event payload:
-- `reqId` (must match account-level `pnlReqId`)
-- `dailyPnL`
-
-Used for:
-- Account-level daily PnL (`accountDailyPnL`) shown in totals.
-- Sets `pnlReady = true` on first tick.
-
-### `pnlSingle` (from `reqPnLSingle`)
-
-Consumed event payload:
-- `reqId` (mapped back to `conId`)
-- `dailyPnL`
-- `unrealizedPnL` (optional)
-- `realizedPnL` (optional)
-- `pos`, `value` are currently ignored for valuation fields
-
-Used for:
-- Per-position intraday PnL fields:
-  - `dailyPnL`
-  - `unrealizedPnL`
-  - `realizedPnL`
-
-Important:
-- `pnlSingle` is not used for `marketValue` or `marketPrice` to avoid cross-stream valuation drift.
+- This stream is the sole source for all position data.
+- If `pos === 0`, the position is removed.
 
 ### `updateAccountValue` (from `reqAccountUpdates`)
 
@@ -85,7 +56,6 @@ Consumed event payload:
 
 Used for:
 - Cash balance when `key === "TotalCashBalance"` and `currency === "BASE"`.
-- Net liquidation value when `key === "NetLiquidation"` and `currency === "BASE"`.
 
 ### `accountDownloadEnd` (from `reqAccountUpdates`)
 
@@ -93,60 +63,46 @@ Used for:
 - Setting `initialLoadComplete = true`.
 - UI only renders the portfolio table after this flag is true.
 
-## 3) Merge Contract (Single Source of Truth)
-
-Current merge contract in broker:
+## 3) Data Ownership (Single Source of Truth)
 
 1. `updatePortfolio` owns:
    - `quantity`
    - `marketPrice`
    - `marketValue`
-   - static position metadata
-   - `positionsMarketValue` (sum of all position market values)
-2. `pnlSingle` owns:
-   - `dailyPnL`
    - `unrealizedPnL`
    - `realizedPnL`
-3. `pnl` owns:
-   - `accountDailyPnL`
-   - `pnlReady` flag
-4. `updateAccountValue` owns:
+   - static position metadata
+   - `positionsMarketValue` (sum of all position market values)
+2. `updateAccountValue` owns:
    - `cashBalance` (TotalCashBalance, BASE)
-   - `netLiquidation` (NetLiquidation, BASE)
 
 Total equity computation:
-- `totalEquity = netLiquidation` when available (preferred).
-- `totalEquity = positionsMarketValue + cashBalance` as fallback.
+- `totalEquity = positionsMarketValue + cashBalance`
 
-## 4) Why This Contract Exists
+## 4) Why This Model
 
-Observed production symptom:
-- Portfolio total briefly loads low, then rises.
-- Later, total can drift back toward that same lower level.
+The previous multi-stream model (`reqPnL`, `reqPnLSingle`, `reqAccountUpdates`) created:
+- Cross-stream timing drift (startup flash, periodic snap-back)
+- Complex merge logic with realtime overlay and staleness windows
+- Non-deterministic overwrites when stream timing changed
 
-Root cause class:
-- Two streams (`updatePortfolio` and `pnlSingle`) were previously allowed to write the same valuation fields (`marketValue`, `marketPrice`), with dynamic precedence rules. This creates non-deterministic overwrites when stream timing/order changes.
+The account-updates-only model:
+- Has a single deterministic data path
+- No merge conflicts possible
+- Simpler to debug and reason about
 
-Resolution:
-- Remove overlapping ownership. Keep valuation fields on one stream (`updatePortfolio`) and keep per-position PnL on `pnlSingle`.
-- Prefer `NetLiquidation` from IBKR for `totalEquity` to reduce drift from mixed stream timing.
+Tradeoff: lower update cadence (event-driven, often minutes between updates in quiet markets) vs. near-1s updates from `pnlSingle`.
 
-## 5) Store and Chart Implications
+## 5) Recency and Staleness
 
-Store behavior (`src/state/store.ts`):
-- Receives merged broker updates including `totalEquity`.
-- Samples chart history at ~1 second cadence.
-- Uses `totalEquity` directly for chart points (already includes cash via NetLiquidation or fallback).
-- Starts chart only after `initialLoadComplete`.
+- `lastPortfolioUpdateAt` (epoch ms) is set on every broker event that triggers an emit.
+- UI displays "Updated X ago" label that increments every second.
+- Data is marked as stale (yellow) when no update has arrived for 3 minutes (180 seconds).
 
-Chart behavior (`src/tui/MarketValueChart.tsx`):
-- Plots delta from session baseline.
-- Uses expanding-only scale bounds (hysteresis) for visual stability.
+## 6) Readiness
 
-## 6) Readiness Gates
-
-1. `initialLoadComplete` - set on `accountDownloadEnd`. UI renders portfolio table only after this.
-2. `pnlReady` - set on first `pnl` tick. Day P&L shows `--` placeholder until ready (avoids misleading `$0.00`).
+- `initialLoadComplete` - set on `accountDownloadEnd`. UI shows "Loading full portfolio..." until this is true.
+- No PnL readiness gates (removed with `reqPnL`/`reqPnLSingle`).
 
 ## 7) Debug Logging
 
@@ -155,21 +111,15 @@ Enabled via `--debug-streams` CLI flag:
 npm run dev -- --debug-streams
 ```
 
-When enabled, compact per-event logs are written to stderr with timestamps:
+When enabled, compact per-event logs are written to a file with timestamps:
 - `updatePortfolio`: conId, symbol, qty, mktPrice, mktValue
-- `pnlSingle`: conId, dailyPnL, unrealizedPnL, realizedPnL, value
-- `pnl`: accountDailyPnL
-- `accountValue`: TotalCashBalance and NetLiquidation updates
+- `accountValue`: TotalCashBalance updates
 - `accountDownloadEnd`: account name
-- `emit`: merge summary (positionsMarketValue, cashBalance, netLiquidation, totalEquity)
+- `emit`: summary (positionsMarketValue, cashBalance, totalEquity)
 
 Default run has no extra logs.
 
-## 8) Remaining Known Behaviors
+## 8) Future Options
 
-1. Position valuation update cadence is tied to `updatePortfolio`.
-- `pnlSingle` no longer drives valuation.
-- If `updatePortfolio` cadence is slower than expected for a symbol, valuation movement can appear less frequent.
-
-2. `NetLiquidation` may be missing or delayed on some accounts.
-- Fallback computation (`positionsMarketValue + cashBalance`) is used automatically.
+1. **Real-time market data via `reqMktData`**: Can be reintroduced for near-1s valuation updates per position. This would enable chart rendering and smoother value movement.
+2. **Day P&L via `reqPnL`/`reqPnLSingle`**: Can be re-added for Day P&L columns in the table. These were removed to simplify the dashboard.

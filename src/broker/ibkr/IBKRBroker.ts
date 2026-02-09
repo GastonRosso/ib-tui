@@ -20,13 +20,8 @@ export class IBKRBroker implements Broker {
   private api: IBApi | null = null;
   private connected = false;
   private nextOrderId = 0;
-  private nextReqId = 1000;
   private accountId = "";
   private disconnectCallbacks: Set<() => void> = new Set();
-
-  private getNextReqId(): number {
-    return this.nextReqId++;
-  }
 
   private setupEventHandlers(): void {
     if (!this.api) return;
@@ -141,18 +136,11 @@ export class IBKRBroker implements Broker {
     const api = this.api;
     const positions = new Map<number, Position>();
     let positionsMarketValue = 0;
-    let accountDailyPnL = 0;
     let cashBalance = 0;
-    let netLiquidation: number | null = null;
     let initialLoadComplete = false;
-    let positionPnlReady = false;
-    let accountPnlReady = false;
+    let lastPortfolioUpdateAt = Date.now();
 
-    const pnlReqId = this.getNextReqId();
-    const pnlSingleReqIds = new Map<number, number>();
-    const pnlSingleActive = new Set<number>();
-    const pnlSingleLastTickAt = new Map<number, number>();
-    debugLog("subscribe", `portfolio start account=${this.accountId || "<pending>"} pnlReqId=${pnlReqId}`);
+    debugLog("subscribe", `portfolio start account=${this.accountId || "<pending>"}`);
 
     const computeTotalEquity = (): number => {
       return positionsMarketValue + cashBalance;
@@ -160,18 +148,17 @@ export class IBKRBroker implements Broker {
 
     const emitUpdate = () => {
       const totalEquity = computeTotalEquity();
-      const netLiqDetail = netLiquidation === null ? "n/a" : netLiquidation.toFixed(2);
-      const netLiqDiff = netLiquidation === null ? "n/a" : (totalEquity - netLiquidation).toFixed(2);
-      debugLog("emit", `positionsMV=${positionsMarketValue.toFixed(2)} cash=${cashBalance.toFixed(2)} netLiq=${netLiqDetail} totalEquity=${totalEquity.toFixed(2)} diffVsNetLiq=${netLiqDiff}`);
+      debugLog(
+        "emit",
+        `positionsMV=${positionsMarketValue.toFixed(2)} cash=${cashBalance.toFixed(2)} totalEquity=${totalEquity.toFixed(2)}`
+      );
       callback({
         positions: Array.from(positions.values()),
         positionsMarketValue,
         totalEquity,
-        accountDailyPnL,
         cashBalance,
         initialLoadComplete,
-        positionPnlReady,
-        accountPnlReady,
+        lastPortfolioUpdateAt,
       });
     };
 
@@ -194,52 +181,30 @@ export class IBKRBroker implements Broker {
         return;
       }
 
-      // Guard against missing contract ids to avoid collapsing distinct positions
       if (contract.conId === undefined || contract.conId === null) {
         debugLog("updatePortfolio", "ignored missing conId");
         return;
       }
       const conId = contract.conId;
       const existing = positions.get(conId);
-      const lastPnLSingleTickAt = pnlSingleLastTickAt.get(conId);
-      const preserveRealtimeValue =
-        existing !== undefined &&
-        pnlSingleActive.has(conId) &&
-        lastPnLSingleTickAt !== undefined &&
-        Date.now() - lastPnLSingleTickAt <= 3000 &&
-        existing.quantity === pos;
 
       const position: Position = {
         symbol: contract.symbol ?? "",
         quantity: pos,
         avgCost: avgCost ?? 0,
-        marketValue: preserveRealtimeValue ? existing.marketValue : marketValue,
+        marketValue,
         unrealizedPnL: unrealizedPnL ?? existing?.unrealizedPnL ?? 0,
-        dailyPnL: existing?.dailyPnL ?? 0,
+        dailyPnL: 0,
         realizedPnL: realizedPnL ?? existing?.realizedPnL ?? 0,
-        marketPrice: preserveRealtimeValue ? existing.marketPrice : marketPrice,
+        marketPrice,
         currency: contract.currency ?? "USD",
         conId,
       };
 
       if (pos === 0) {
         positions.delete(conId);
-        pnlSingleActive.delete(conId);
-        pnlSingleLastTickAt.delete(conId);
-        const reqId = pnlSingleReqIds.get(conId);
-        if (reqId !== undefined) {
-          debugLog("subscription", `cancel reqPnLSingle conId=${conId} reqId=${reqId}`);
-          api.cancelPnLSingle(reqId);
-          pnlSingleReqIds.delete(conId);
-        }
       } else {
         positions.set(conId, position);
-        if (!pnlSingleReqIds.has(conId)) {
-          const reqId = this.getNextReqId();
-          pnlSingleReqIds.set(conId, reqId);
-          debugLog("subscription", `start reqPnLSingle conId=${conId} reqId=${reqId}`);
-          api.reqPnLSingle(reqId, this.accountId, "", conId);
-        }
       }
 
       positionsMarketValue = Array.from(positions.values()).reduce(
@@ -247,87 +212,8 @@ export class IBKRBroker implements Broker {
         0
       );
 
+      lastPortfolioUpdateAt = Date.now();
       emitUpdate();
-    };
-
-    const onPnL = (
-      reqId: number,
-      dailyPnL: number,
-      _unrealizedPnL?: number,
-      _realizedPnL?: number
-    ) => {
-      debugLog("pnl", `received reqId=${reqId} expectedReqId=${pnlReqId} accountDailyPnL=${dailyPnL}`);
-      if (reqId === pnlReqId) {
-        accountDailyPnL = dailyPnL;
-        accountPnlReady = true;
-        emitUpdate();
-      } else {
-        debugLog("pnl", `ignored reqId mismatch expected=${pnlReqId} got=${reqId}`);
-      }
-    };
-
-    const onPnLSingle = (
-      reqId: number,
-      pos: number,
-      dailyPnL: number,
-      unrealizedPnL: number | undefined,
-      realizedPnL: number | undefined,
-      value: number
-    ) => {
-      debugLog("pnlSingle", `received reqId=${reqId} pos=${pos} dailyPnL=${dailyPnL} unrealPnL=${unrealizedPnL} realPnL=${realizedPnL} value=${value}`);
-      let matched = false;
-      for (const [conId, rid] of pnlSingleReqIds.entries()) {
-        if (rid === reqId) {
-          matched = true;
-          const existing = positions.get(conId);
-          if (existing) {
-            pnlSingleActive.add(conId);
-            pnlSingleLastTickAt.set(conId, Date.now());
-            positionPnlReady = true;
-
-            const quantity = pos !== 0 && Number.isFinite(pos) ? pos : existing.quantity;
-            const validValue = Number.isFinite(value) && Math.abs(value) < 1e100;
-
-            let marketValue = existing.marketValue;
-            let marketPrice = existing.marketPrice;
-            if (validValue) {
-              marketValue = value;
-              if (quantity !== 0) {
-                marketPrice = value / quantity;
-              }
-            } else if (unrealizedPnL !== undefined && Number.isFinite(unrealizedPnL)) {
-              const derivedValue = quantity * existing.avgCost + unrealizedPnL;
-              marketValue = derivedValue;
-              if (quantity !== 0) {
-                marketPrice = derivedValue / quantity;
-              }
-              debugLog("pnlSingle", `derivedValueFromUnrealized conId=${conId} derivedValue=${derivedValue}`);
-            } else {
-              debugLog("pnlSingle", `keptExistingValue conId=${conId} existingValue=${existing.marketValue}`);
-            }
-
-            positions.set(conId, {
-              ...existing,
-              quantity,
-              marketValue,
-              marketPrice,
-              unrealizedPnL: unrealizedPnL ?? existing.unrealizedPnL,
-              realizedPnL: realizedPnL ?? existing.realizedPnL,
-              dailyPnL,
-            });
-
-            positionsMarketValue = Array.from(positions.values()).reduce(
-              (sum, p) => sum + p.marketValue,
-              0
-            );
-          }
-          emitUpdate();
-          break;
-        }
-      }
-      if (!matched) {
-        debugLog("pnlSingle", `ignored unknown reqId=${reqId}`);
-      }
     };
 
     const onAccountValue = (
@@ -343,10 +229,7 @@ export class IBKRBroker implements Broker {
       }
       if (key === "TotalCashBalance" && currency === "BASE") {
         cashBalance = parseFloat(value) || 0;
-        emitUpdate();
-      } else if (key === "NetLiquidation" && currency === "BASE") {
-        const parsed = parseFloat(value);
-        netLiquidation = Number.isFinite(parsed) ? parsed : null;
+        lastPortfolioUpdateAt = Date.now();
         emitUpdate();
       } else {
         debugLog("accountValue", `ignored key=${key} currency=${currency}`);
@@ -360,36 +243,24 @@ export class IBKRBroker implements Broker {
         return;
       }
       initialLoadComplete = true;
+      lastPortfolioUpdateAt = Date.now();
       emitUpdate();
     };
 
     api.on(EventName.updatePortfolio, onPortfolioUpdate);
-    api.on(EventName.pnl, onPnL);
-    api.on(EventName.pnlSingle, onPnLSingle);
     api.on(EventName.updateAccountValue, onAccountValue);
     api.on(EventName.accountDownloadEnd, onAccountDownloadEnd);
 
     debugLog("subscription", `reqAccountUpdates start account=${this.accountId}`);
     api.reqAccountUpdates(true, this.accountId);
-    debugLog("subscription", `reqPnL start reqId=${pnlReqId} account=${this.accountId}`);
-    api.reqPnL(pnlReqId, this.accountId, "");
 
     return () => {
       api.removeListener(EventName.updatePortfolio, onPortfolioUpdate);
-      api.removeListener(EventName.pnl, onPnL);
-      api.removeListener(EventName.pnlSingle, onPnLSingle);
       api.removeListener(EventName.updateAccountValue, onAccountValue);
       api.removeListener(EventName.accountDownloadEnd, onAccountDownloadEnd);
 
       debugLog("subscription", `reqAccountUpdates stop account=${this.accountId}`);
       api.reqAccountUpdates(false, this.accountId);
-      debugLog("subscription", `cancelPnL reqId=${pnlReqId}`);
-      api.cancelPnL(pnlReqId);
-
-      for (const reqId of pnlSingleReqIds.values()) {
-        debugLog("subscription", `cancelPnLSingle reqId=${reqId}`);
-        api.cancelPnLSingle(reqId);
-      }
       debugLog("subscribe", "portfolio stop");
     };
   }

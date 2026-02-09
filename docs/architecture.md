@@ -54,33 +54,21 @@ Uses `@stoqey/ib` library to communicate with TWS/IB Gateway via socket API.
 - Waits for `nextValidId` event to confirm connection
 - Captures `accountId` from `managedAccounts` event
 
-**Portfolio Subscription:**
+**Portfolio Subscription (Account-Updates-Only Model):**
 
-The `subscribePortfolio()` method combines multiple IBKR data streams:
+The `subscribePortfolio()` method uses a single IBKR subscription:
 
 | API Call | Event | Data | Update Frequency |
 |----------|-------|------|------------------|
 | `reqAccountUpdates` | `updatePortfolio` | symbol, avgCost, currency, conId, quantity, marketPrice, marketValue | On portfolio/account updates |
-| `reqPnL` | `pnl` | accountDailyPnL | Every second |
-| `reqPnLSingle` | `pnlSingle` | dailyPnL, unrealizedPnL, realizedPnL | Usually every second |
-| `reqAccountUpdates` | `updateAccountValue` | cashBalance | On changes |
+| `reqAccountUpdates` | `updateAccountValue` | cashBalance (`TotalCashBalance`, `BASE`) | On changes |
 | `reqAccountUpdates` | `accountDownloadEnd` | initial load complete flag | End of initial snapshot |
 
-Key insight: each field now has one source of truth to avoid stream races. `updatePortfolio` owns valuation and size fields, `pnlSingle` owns per-position PnL fields, and `pnl` owns account-level day PnL.
+Single source of truth: `updatePortfolio` owns position data and valuation, `updateAccountValue` owns cash balance, `accountDownloadEnd` owns initial load completion.
 
-**Position Data Merge Logic:**
-
-```
-1. updatePortfolio fires → creates/updates position static + valuation fields
-2. reqPnLSingle(conId) starts for each position
-3. pnlSingle fires every second → updates:
-   - dailyPnL
-   - unrealizedPnL
-   - realizedPnL
-4. updatePortfolio remains authoritative for quantity/marketPrice/marketValue
-```
-
-For full details (event payloads, merge ownership, and known behaviors), see `/Users/gastonrosso/Projects/ib/docs/ibkr-portfolio-streams.md`.
+**Cadence:**
+- Updates are event-driven, typically arriving on portfolio changes rather than at a fixed interval.
+- This is slower than the previous multi-stream model (~1s from `pnlSingle`) but eliminates cross-stream drift and merge complexity.
 
 ### 3. State Management (`src/state/store.ts`)
 
@@ -93,9 +81,11 @@ type AppState = {
   error: string | null
 
   positions: Position[]
-  totalPortfolioValue: number
-  accountDailyPnL: number
+  positionsMarketValue: number
+  totalEquity: number
   cashBalance: number
+  initialLoadComplete: boolean
+  lastPortfolioUpdateAt: number | null
 
   connect: () => Promise<void>
   disconnect: () => Promise<void>
@@ -115,8 +105,9 @@ The store bridges broker events to React components. When `subscribePortfolio()`
 **PortfolioView.tsx** - Portfolio display:
 - Subscribes to portfolio updates on mount
 - Fixed-width column table layout
-- Color-coded P&L (green positive, red negative)
+- Color-coded unrealized P&L (green positive, red negative)
 - Shows positions, cash, and totals
+- Recency indicator ("Updated X ago") with stale detection at 3 minutes
 
 ## Data Flow
 
@@ -130,11 +121,10 @@ The store bridges broker events to React components. When `subscribePortfolio()`
 ┌─────────────────────────────────────────────────────────────┐
 │                    IBKRBroker                               │
 │                                                             │
-│  Subscriptions:                                             │
-│  ├─ reqAccountUpdates → updatePortfolio (positions + values)│
-│  ├─ reqPnL → pnl (account daily P&L)                        │
-│  ├─ reqPnLSingle → pnlSingle (position P&L fields)          │
-│  └─ updateAccountValue (cash balance)                       │
+│  Subscription:                                              │
+│  └─ reqAccountUpdates → updatePortfolio (positions + values)│
+│                       → updateAccountValue (cash balance)   │
+│                       → accountDownloadEnd (load complete)  │
 │                                                             │
 │  Consolidates into PortfolioUpdate callback                 │
 └─────────────────────────┬───────────────────────────────────┘
@@ -143,8 +133,8 @@ The store bridges broker events to React components. When `subscribePortfolio()`
 ┌─────────────────────────────────────────────────────────────┐
 │                    Zustand Store                            │
 │                                                             │
-│  Updates: positions, totalPortfolioValue,                   │
-│           accountDailyPnL, cashBalance                      │
+│  Updates: positions, positionsMarketValue,                  │
+│           totalEquity, cashBalance, lastPortfolioUpdateAt   │
 └─────────────────────────┬───────────────────────────────────┘
                           │ State change triggers re-render
                           ▼
@@ -179,9 +169,11 @@ type Position = {
 ```typescript
 type PortfolioUpdate = {
   positions: Position[]
-  totalPortfolioValue: number
-  accountDailyPnL: number
+  positionsMarketValue: number
+  totalEquity: number
   cashBalance: number
+  initialLoadComplete: boolean
+  lastPortfolioUpdateAt: number
 }
 ```
 
@@ -196,3 +188,8 @@ Common ports:
 - `7497` - TWS paper
 - `4001` - Gateway live
 - `4002` - Gateway paper
+
+## Future Options
+
+- **Real-time market data**: `reqMktData` can be reintroduced for near-1s valuation updates per position. This would restore chart capability and smoother value movement at the cost of additional stream complexity.
+- **Day P&L**: Account-level `reqPnL` and per-position `reqPnLSingle` can be re-added if Day P&L columns are needed. These were removed to simplify the dashboard.

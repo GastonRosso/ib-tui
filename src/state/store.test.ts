@@ -18,7 +18,7 @@ vi.mock("../broker/ibkr/IBKRBroker.js", () => {
               avgCost: 145.0,
               marketValue: 15050,
               unrealizedPnL: 550,
-              dailyPnL: 75.25,
+              dailyPnL: 0,
               realizedPnL: 0,
               marketPrice: 150.5,
               currency: "USD",
@@ -27,11 +27,9 @@ vi.mock("../broker/ibkr/IBKRBroker.js", () => {
           ],
           positionsMarketValue: 15050,
           totalEquity: 20050,
-          accountDailyPnL: 75.25,
           cashBalance: 5000,
           initialLoadComplete: true,
-          positionPnlReady: true,
-          accountPnlReady: true,
+          lastPortfolioUpdateAt: 1000,
         });
         return vi.fn();
       }),
@@ -47,15 +45,9 @@ describe("store", () => {
       positions: [],
       positionsMarketValue: 0,
       totalEquity: 0,
-      accountDailyPnL: 0,
       cashBalance: 0,
-      positionPnlReady: false,
-      accountPnlReady: false,
-      marketValueHistory: [],
-      chartStartTime: null,
-      lastHistoryTimestamp: null,
-      chartStartValue: null,
       initialLoadComplete: false,
+      lastPortfolioUpdateAt: null,
     });
   });
 
@@ -86,21 +78,12 @@ describe("store", () => {
       expect(state.positionsMarketValue).toBe(15050);
     });
 
-    it("updates accountDailyPnL from broker subscription", () => {
+    it("updates lastPortfolioUpdateAt from broker subscription", () => {
       const { subscribePortfolio } = useStore.getState();
       subscribePortfolio();
 
       const state = useStore.getState();
-      expect(state.accountDailyPnL).toBe(75.25);
-    });
-
-    it("updates pnl readiness flags from broker subscription", () => {
-      const { subscribePortfolio } = useStore.getState();
-      subscribePortfolio();
-
-      const state = useStore.getState();
-      expect(state.positionPnlReady).toBe(true);
-      expect(state.accountPnlReady).toBe(true);
+      expect(state.lastPortfolioUpdateAt).toBe(1000);
     });
 
     it("returns an unsubscribe function", () => {
@@ -122,9 +105,8 @@ describe("store", () => {
       expect(state.positions).toHaveLength(0);
       expect(state.totalEquity).toBe(0);
       expect(state.positionsMarketValue).toBe(0);
-      expect(state.accountDailyPnL).toBe(0);
-      expect(state.positionPnlReady).toBe(false);
-      expect(state.accountPnlReady).toBe(false);
+      expect(state.cashBalance).toBe(0);
+      expect(state.lastPortfolioUpdateAt).toBeNull();
       expect(state.connectionStatus).toBe("disconnected");
     });
   });

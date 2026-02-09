@@ -1,14 +1,18 @@
-# Market Value Chart
+# Market Value Chart (Removed)
 
-Real-time ASCII chart showing portfolio value over time.
+The real-time ASCII chart has been removed as part of the streams simplification.
 
-## Usage
+## Rationale
 
-The chart appears above the portfolio table when connected. It displays up to 5 minutes of portfolio value history.
+The chart relied on near-1s update frequency from `pnlSingle` streams, which provided enough data points to render meaningful chart motion. After switching to the account-updates-only model, the update cadence is event-driven (often minutes between updates in quiet markets), making a real-time chart impractical.
 
-## Implementation
+## Previous Implementation
 
-- Uses `asciichart` library for ASCII rendering
+- Used `asciichart` library for ASCII rendering
 - Data stored in Zustand store as circular buffer (300 points max)
-- Updates every ~1 second via portfolio subscription events from IBKR
-- Samples data to fit terminal width
+- Updated every ~1 second via `pnlSingle` events
+- Plotted delta from session baseline with hysteresis scaling
+
+## Reintroduction Path
+
+To bring the chart back, the app would need a higher-frequency data source such as `reqMktData` for per-position market data. This is tracked as a future option in the architecture docs.

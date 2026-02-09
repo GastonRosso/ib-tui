@@ -21,7 +21,7 @@ describe("PortfolioView", () => {
     avgCost: 145.0,
     marketValue: 15050,
     unrealizedPnL: 550,
-    dailyPnL: 75.25,
+    dailyPnL: 0,
     realizedPnL: 0,
     marketPrice: 150.5,
     currency: "USD",
@@ -44,14 +44,10 @@ describe("PortfolioView", () => {
       const state = {
         positions: [] as Position[],
         totalEquity: 0,
-        accountDailyPnL: 0,
         cashBalance: 0,
-        positionPnlReady: false,
-        accountPnlReady: false,
-        marketValueHistory: [],
-        chartStartTime: null,
         subscribePortfolio: mockSubscribe,
         initialLoadComplete: false,
+        lastPortfolioUpdateAt: null,
       };
       return selector ? selector(state as never) : state;
     });
@@ -67,14 +63,10 @@ describe("PortfolioView", () => {
       const state = {
         positions: [createMockPosition()],
         totalEquity: 15050,
-        accountDailyPnL: 75.25,
         cashBalance: 0,
-        positionPnlReady: true,
-        accountPnlReady: true,
-        marketValueHistory: [],
-        chartStartTime: null,
         subscribePortfolio: mockSubscribe,
         initialLoadComplete: true,
+        lastPortfolioUpdateAt: Date.now(),
       };
       return selector ? selector(state as never) : state;
     });
@@ -88,19 +80,15 @@ describe("PortfolioView", () => {
     expect(frame).toContain("$15,050.00");
   });
 
-  it("renders header row", () => {
+  it("renders header row without Day P&L columns", () => {
     mockUseStore.mockImplementation((selector) => {
       const state = {
         positions: [createMockPosition()],
         totalEquity: 15050,
-        accountDailyPnL: 75.25,
         cashBalance: 0,
-        positionPnlReady: true,
-        accountPnlReady: true,
-        marketValueHistory: [],
-        chartStartTime: null,
         subscribePortfolio: mockSubscribe,
         initialLoadComplete: true,
+        lastPortfolioUpdateAt: Date.now(),
       };
       return selector ? selector(state as never) : state;
     });
@@ -112,9 +100,11 @@ describe("PortfolioView", () => {
     expect(frame).toContain("Qty");
     expect(frame).toContain("Price");
     expect(frame).toContain("Avg Cost");
-    expect(frame).toContain("Day P&L");
     expect(frame).toContain("Unrealized");
     expect(frame).toContain("% Port");
+    expect(frame).toContain("Mkt Value");
+    expect(frame).not.toContain("Day P&L");
+    expect(frame).not.toContain("Day %");
   });
 
   it("renders summary row with totals", () => {
@@ -122,14 +112,10 @@ describe("PortfolioView", () => {
       const state = {
         positions: [createMockPosition()],
         totalEquity: 15050,
-        accountDailyPnL: 75.25,
         cashBalance: 0,
-        positionPnlReady: true,
-        accountPnlReady: true,
-        marketValueHistory: [],
-        chartStartTime: null,
         subscribePortfolio: mockSubscribe,
         initialLoadComplete: true,
+        lastPortfolioUpdateAt: Date.now(),
       };
       return selector ? selector(state as never) : state;
     });
@@ -149,14 +135,10 @@ describe("PortfolioView", () => {
           createMockPosition({ conId: 2, symbol: "MSFT", marketValue: 2500 }),
         ],
         totalEquity: 10000,
-        accountDailyPnL: 100,
         cashBalance: 0,
-        positionPnlReady: true,
-        accountPnlReady: true,
-        marketValueHistory: [],
-        chartStartTime: null,
         subscribePortfolio: mockSubscribe,
         initialLoadComplete: true,
+        lastPortfolioUpdateAt: Date.now(),
       };
       return selector ? selector(state as never) : state;
     });
@@ -177,14 +159,10 @@ describe("PortfolioView", () => {
           createMockPosition({ conId: 3, symbol: "GOOGL" }),
         ],
         totalEquity: 45150,
-        accountDailyPnL: 225.75,
         cashBalance: 0,
-        positionPnlReady: true,
-        accountPnlReady: true,
-        marketValueHistory: [],
-        chartStartTime: null,
         subscribePortfolio: mockSubscribe,
         initialLoadComplete: true,
+        lastPortfolioUpdateAt: Date.now(),
       };
       return selector ? selector(state as never) : state;
     });
@@ -197,24 +175,19 @@ describe("PortfolioView", () => {
     expect(frame).toContain("GOOGL");
   });
 
-  it("handles negative P&L values", () => {
+  it("handles negative unrealized P&L values", () => {
     mockUseStore.mockImplementation((selector) => {
       const state = {
         positions: [
           createMockPosition({
-            dailyPnL: -150.5,
             unrealizedPnL: -500,
           }),
         ],
         totalEquity: 15050,
-        accountDailyPnL: -150.5,
         cashBalance: 0,
-        positionPnlReady: true,
-        accountPnlReady: true,
-        marketValueHistory: [],
-        chartStartTime: null,
         subscribePortfolio: mockSubscribe,
         initialLoadComplete: true,
+        lastPortfolioUpdateAt: Date.now(),
       };
       return selector ? selector(state as never) : state;
     });
@@ -222,29 +195,22 @@ describe("PortfolioView", () => {
     const { lastFrame } = render(<PortfolioView />);
     const frame = lastFrame();
 
-    // The format is $-150.50 not -$150.50
-    expect(frame).toContain("$-150.50");
     expect(frame).toContain("$-500.00");
   });
 
-  it("handles positive P&L values", () => {
+  it("handles positive unrealized P&L values", () => {
     mockUseStore.mockImplementation((selector) => {
       const state = {
         positions: [
           createMockPosition({
-            dailyPnL: 250.0,
             unrealizedPnL: 1000,
           }),
         ],
         totalEquity: 15050,
-        accountDailyPnL: 250.0,
         cashBalance: 0,
-        positionPnlReady: true,
-        accountPnlReady: true,
-        marketValueHistory: [],
-        chartStartTime: null,
         subscribePortfolio: mockSubscribe,
         initialLoadComplete: true,
+        lastPortfolioUpdateAt: Date.now(),
       };
       return selector ? selector(state as never) : state;
     });
@@ -252,23 +218,21 @@ describe("PortfolioView", () => {
     const { lastFrame } = render(<PortfolioView />);
     const frame = lastFrame();
 
-    expect(frame).toContain("$250.00");
     expect(frame).toContain("$1,000.00");
   });
 
-  it("shows placeholder for Day P&L before pnl readiness", () => {
+  it("shows recency indicator with Updated text", () => {
+    const now = Date.now();
+    vi.spyOn(Date, "now").mockReturnValue(now);
+
     mockUseStore.mockImplementation((selector) => {
       const state = {
-        positions: [createMockPosition({ dailyPnL: 0 })],
+        positions: [createMockPosition()],
         totalEquity: 15050,
-        accountDailyPnL: 0,
         cashBalance: 0,
-        positionPnlReady: false,
-        accountPnlReady: false,
-        marketValueHistory: [],
-        chartStartTime: null,
         subscribePortfolio: mockSubscribe,
         initialLoadComplete: true,
+        lastPortfolioUpdateAt: now - 5000,
       };
       return selector ? selector(state as never) : state;
     });
@@ -276,6 +240,27 @@ describe("PortfolioView", () => {
     const { lastFrame } = render(<PortfolioView />);
     const frame = lastFrame();
 
-    expect(frame).toContain("--");
+    expect(frame).toContain("Updated");
+    expect(frame).toContain("ago");
+  });
+
+  it("does not render MarketValueChart", () => {
+    mockUseStore.mockImplementation((selector) => {
+      const state = {
+        positions: [createMockPosition()],
+        totalEquity: 15050,
+        cashBalance: 0,
+        subscribePortfolio: mockSubscribe,
+        initialLoadComplete: true,
+        lastPortfolioUpdateAt: Date.now(),
+      };
+      return selector ? selector(state as never) : state;
+    });
+
+    const { lastFrame } = render(<PortfolioView />);
+    const frame = lastFrame();
+
+    expect(frame).not.toContain("Portfolio Δ since connect");
+    expect(frame).not.toContain("Collecting data for chart");
   });
 });

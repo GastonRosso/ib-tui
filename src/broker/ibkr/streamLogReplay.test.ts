@@ -14,17 +14,12 @@ type PositionState = {
   quantity: number;
   marketValue: number;
   marketPrice: number;
-  pnlSingleActive: boolean;
-  lastPnLSingleTickAtMs: number | null;
 };
 
 type ReplayState = {
   selectedAccount: string;
   positions: Map<number, PositionState>;
-  reqIdToConId: Map<number, number>;
   cashBalance: number;
-  lastNetLiquidation: number | null;
-  firstUpdatePortfolioValueByConId: Map<number, number>;
 };
 
 const parseFields = (detail: string): Record<string, string> => {
@@ -74,7 +69,7 @@ const sumPositions = (positions: Map<number, PositionState>): number => {
 };
 
 describe("IBKR stream log replay", () => {
-  it("replays stream logs and checks merge invariants", () => {
+  it("replays stream logs and checks account-update-only invariants", () => {
     const inputPath = process.env.IBKR_STREAM_LOG_PATH;
     if (!inputPath) {
       return;
@@ -93,18 +88,17 @@ describe("IBKR stream log replay", () => {
     const createInitialState = (): ReplayState => ({
       selectedAccount: "",
       positions: new Map(),
-      reqIdToConId: new Map(),
       cashBalance: 0,
-      lastNetLiquidation: null,
-      firstUpdatePortfolioValueByConId: new Map(),
     });
 
     let state: ReplayState = createInitialState();
     let session = 0;
 
     const failures: string[] = [];
-    const relDiffThreshold = Number(process.env.IBKR_STREAM_MAX_REL_DIFF ?? "0.001");
     const absTol = 0.05;
+
+    let sawPnlSubscription = false;
+    let sawPnlSingleSubscription = false;
 
     for (let i = 0; i < lines.length; i++) {
       const rawLine = lines[i];
@@ -128,19 +122,12 @@ describe("IBKR stream log replay", () => {
         if (selected) state.selectedAccount = selected;
       }
 
-      if (line.stream === "subscription" && line.detail.startsWith("start reqPnLSingle")) {
-        const conId = toFiniteNumber(line.fields.conId);
-        const reqId = toFiniteNumber(line.fields.reqId);
-        if (conId !== null && reqId !== null) {
-          state.reqIdToConId.set(reqId, conId);
-        }
+      // Detect any leftover pnl/pnlSingle subscriptions (should not exist after simplification)
+      if (line.stream === "subscription" && line.detail.includes("reqPnL ")) {
+        sawPnlSubscription = true;
       }
-
-      if (line.stream === "subscription" && line.detail.startsWith("cancel reqPnLSingle")) {
-        const reqId = toFiniteNumber(line.fields.reqId);
-        if (reqId !== null) {
-          state.reqIdToConId.delete(reqId);
-        }
+      if (line.stream === "subscription" && line.detail.includes("reqPnLSingle")) {
+        sawPnlSingleSubscription = true;
       }
 
       if (line.stream === "updatePortfolio" && line.detail.startsWith("received")) {
@@ -157,81 +144,16 @@ describe("IBKR stream log replay", () => {
           continue;
         }
 
-        const existing = state.positions.get(conId);
-        const preserveRealtime =
-          existing !== undefined &&
-          existing.pnlSingleActive &&
-          existing.lastPnLSingleTickAtMs !== null &&
-          line.timeMs - existing.lastPnLSingleTickAtMs <= 3000 &&
-          existing.quantity === qty;
-
         if (qty === 0) {
           state.positions.delete(conId);
           continue;
         }
 
-        const nextMarketValue = preserveRealtime ? existing.marketValue : marketValue;
-        const nextMarketPrice = preserveRealtime ? existing.marketPrice : marketPrice;
         state.positions.set(conId, {
           quantity: qty,
-          marketValue: nextMarketValue,
-          marketPrice: nextMarketPrice,
-          pnlSingleActive: preserveRealtime ? existing.pnlSingleActive : false,
-          lastPnLSingleTickAtMs: preserveRealtime ? existing.lastPnLSingleTickAtMs : null,
+          marketValue,
+          marketPrice,
         });
-
-        if (!state.firstUpdatePortfolioValueByConId.has(conId)) {
-          state.firstUpdatePortfolioValueByConId.set(conId, marketValue);
-        }
-      }
-
-      if (line.stream === "pnlSingle" && line.detail.startsWith("received")) {
-        const reqId = toFiniteNumber(line.fields.reqId);
-        const pos = toFiniteNumber(line.fields.pos);
-        const value = toFiniteNumber(line.fields.value);
-        const unreal = toFiniteNumber(line.fields.unrealPnL);
-
-        if (reqId === null) continue;
-        const conId = state.reqIdToConId.get(reqId);
-        if (conId === undefined) {
-          failures.push(
-            `[session=${session} line=${line.lineNo}] [${line.stream}] unknown reqId=${reqId} at t=${line.timeMs}`
-          );
-          continue;
-        }
-
-        const existing = state.positions.get(conId);
-        if (!existing) continue;
-
-        existing.pnlSingleActive = true;
-        existing.lastPnLSingleTickAtMs = line.timeMs;
-
-        const quantity = pos !== null && pos !== 0 ? pos : existing.quantity;
-        const validValue = value !== null && Math.abs(value) < 1e100;
-
-        let nextValue = existing.marketValue;
-        if (validValue) {
-          nextValue = value;
-        } else if (unreal !== null) {
-          // avgCost is not present in log lines; keep current value on derived branch.
-          nextValue = existing.marketValue;
-        }
-
-        existing.quantity = quantity;
-        existing.marketValue = nextValue;
-        if (quantity !== 0) {
-          existing.marketPrice = nextValue / quantity;
-        }
-
-        const baseline = state.firstUpdatePortfolioValueByConId.get(conId);
-        if (baseline !== undefined && baseline !== 0 && validValue) {
-          const rel = Math.abs(nextValue - baseline) / Math.abs(baseline);
-          if (rel > relDiffThreshold) {
-            failures.push(
-              `[session=${session} line=${line.lineNo}] [pnlSingle drift] conId=${conId} baseline=${baseline.toFixed(2)} pnlSingleValue=${nextValue.toFixed(2)} relDiff=${(rel * 100).toFixed(3)}% threshold=${(relDiffThreshold * 100).toFixed(3)}%`
-            );
-          }
-        }
       }
 
       if (line.stream === "accountValue" && line.detail.startsWith("received")) {
@@ -246,9 +168,6 @@ describe("IBKR stream log replay", () => {
 
         if (key === "TotalCashBalance" && currency === "BASE") {
           state.cashBalance = value;
-        }
-        if (key === "NetLiquidation" && currency === "BASE") {
-          state.lastNetLiquidation = value;
         }
       }
 
@@ -281,6 +200,14 @@ describe("IBKR stream log replay", () => {
           );
         }
       }
+    }
+
+    // Regression: no pnl/pnlSingle subscriptions should appear in new logs
+    if (sawPnlSubscription) {
+      failures.push("[regression] Found reqPnL subscription in log - should not exist after simplification");
+    }
+    if (sawPnlSingleSubscription) {
+      failures.push("[regression] Found reqPnLSingle subscription in log - should not exist after simplification");
     }
 
     if (failures.length > 0) {
