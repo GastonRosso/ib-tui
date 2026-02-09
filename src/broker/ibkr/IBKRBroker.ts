@@ -8,7 +8,7 @@ import type {
   Quote,
   PortfolioUpdate,
 } from "../types.js";
-import { debugLog } from "./debug.js";
+import { log } from "../../utils/logger.js";
 
 const DEFAULT_CONFIG: ConnectionConfig = {
   host: process.env.IBKR_HOST || "127.0.0.1",
@@ -27,23 +27,23 @@ export class IBKRBroker implements Broker {
     if (!this.api) return;
 
     this.api.on(EventName.connected, () => {
-      debugLog("connection", "connected");
+      log("debug", "event.connected", "received");
       this.connected = true;
     });
 
     this.api.on(EventName.disconnected, () => {
-      debugLog("connection", "disconnected");
+      log("debug", "event.disconnected", "received");
       this.connected = false;
       this.disconnectCallbacks.forEach((cb) => cb());
     });
 
     this.api.on(EventName.nextValidId, (orderId: number) => {
-      debugLog("connection", `nextValidId=${orderId}`);
+      log("debug", "event.nextValidId", `orderId=${orderId}`);
       this.nextOrderId = orderId;
     });
 
     this.api.on(EventName.error, (err: Error, code: number, reqId: number) => {
-      debugLog("error", `code=${code} reqId=${reqId} message=${err.message}`);
+      log("error", "error", `code=${code} reqId=${reqId} message=${err.message}`);
       console.error(`IBKR Error [${code}] reqId=${reqId}:`, err.message);
     });
 
@@ -52,12 +52,12 @@ export class IBKRBroker implements Broker {
       if (accounts.length > 0) {
         this.accountId = accounts[0];
       }
-      debugLog("connection", `managedAccounts=${accountsList} selectedAccount=${this.accountId}`);
+      log("debug", "event.managedAccounts", `accounts=${accountsList} selectedAccount=${this.accountId}`);
     });
   }
 
   async connect(config: ConnectionConfig = DEFAULT_CONFIG): Promise<void> {
-    debugLog("connection", `connect host=${config.host} port=${config.port} clientId=${config.clientId}`);
+    log("info", "connection", `connect host=${config.host} port=${config.port} clientId=${config.clientId}`);
     this.api = new IBApi({
       host: config.host,
       port: config.port,
@@ -79,7 +79,7 @@ export class IBKRBroker implements Broker {
   }
 
   async disconnect(): Promise<void> {
-    debugLog("connection", "disconnect requested");
+    log("info", "connection", "disconnect requested");
     if (this.api) {
       this.api.disconnect();
     }
@@ -140,7 +140,7 @@ export class IBKRBroker implements Broker {
     let initialLoadComplete = false;
     let lastPortfolioUpdateAt = Date.now();
 
-    debugLog("subscribe", `portfolio start account=${this.accountId || "<pending>"}`);
+    log("info", "subscription", `portfolio start account=${this.accountId || "<pending>"}`);
 
     const computeTotalEquity = (): number => {
       return positionsMarketValue + cashBalance;
@@ -148,8 +148,9 @@ export class IBKRBroker implements Broker {
 
     const emitUpdate = () => {
       const totalEquity = computeTotalEquity();
-      debugLog(
-        "emit",
+      log(
+        "debug",
+        "event.emit",
         `positionsMV=${positionsMarketValue.toFixed(2)} cash=${cashBalance.toFixed(2)} totalEquity=${totalEquity.toFixed(2)}`
       );
       callback({
@@ -172,17 +173,18 @@ export class IBKRBroker implements Broker {
       realizedPnL?: number,
       accountName?: string
     ) => {
-      debugLog(
-        "updatePortfolio",
+      log(
+        "debug",
+        "event.updatePortfolio",
         `received account=${accountName} conId=${contract.conId ?? "n/a"} sym=${contract.symbol ?? ""} qty=${pos} mktPrice=${marketPrice} mktValue=${marketValue}`
       );
       if (accountName !== this.accountId && this.accountId) {
-        debugLog("updatePortfolio", `ignored account mismatch expected=${this.accountId} got=${accountName}`);
+        log("debug", "event.updatePortfolio", `ignored account mismatch expected=${this.accountId} got=${accountName}`);
         return;
       }
 
       if (contract.conId === undefined || contract.conId === null) {
-        debugLog("updatePortfolio", "ignored missing conId");
+        log("debug", "event.updatePortfolio", "ignored missing conId");
         return;
       }
       const conId = contract.conId;
@@ -222,9 +224,9 @@ export class IBKRBroker implements Broker {
       currency: string,
       accountName: string
     ) => {
-      debugLog("accountValue", `received key=${key} value=${value} currency=${currency} account=${accountName}`);
+      log("debug", "event.accountValue", `received key=${key} value=${value} currency=${currency} account=${accountName}`);
       if (accountName !== this.accountId && this.accountId) {
-        debugLog("accountValue", `ignored account mismatch expected=${this.accountId} got=${accountName}`);
+        log("debug", "event.accountValue", `ignored account mismatch expected=${this.accountId} got=${accountName}`);
         return;
       }
       if (key === "TotalCashBalance" && currency === "BASE") {
@@ -232,14 +234,14 @@ export class IBKRBroker implements Broker {
         lastPortfolioUpdateAt = Date.now();
         emitUpdate();
       } else {
-        debugLog("accountValue", `ignored key=${key} currency=${currency}`);
+        log("debug", "event.accountValue", `ignored key=${key} currency=${currency}`);
       }
     };
 
     const onAccountDownloadEnd = (accountName: string) => {
-      debugLog("accountDownloadEnd", `received account=${accountName}`);
+      log("debug", "event.accountDownloadEnd", `received account=${accountName}`);
       if (accountName !== this.accountId && this.accountId) {
-        debugLog("accountDownloadEnd", `ignored account mismatch expected=${this.accountId} got=${accountName}`);
+        log("debug", "event.accountDownloadEnd", `ignored account mismatch expected=${this.accountId} got=${accountName}`);
         return;
       }
       initialLoadComplete = true;
@@ -251,7 +253,7 @@ export class IBKRBroker implements Broker {
     api.on(EventName.updateAccountValue, onAccountValue);
     api.on(EventName.accountDownloadEnd, onAccountDownloadEnd);
 
-    debugLog("subscription", `reqAccountUpdates start account=${this.accountId}`);
+    log("info", "subscription", `reqAccountUpdates start account=${this.accountId}`);
     api.reqAccountUpdates(true, this.accountId);
 
     return () => {
@@ -259,9 +261,9 @@ export class IBKRBroker implements Broker {
       api.removeListener(EventName.updateAccountValue, onAccountValue);
       api.removeListener(EventName.accountDownloadEnd, onAccountDownloadEnd);
 
-      debugLog("subscription", `reqAccountUpdates stop account=${this.accountId}`);
+      log("info", "subscription", `reqAccountUpdates stop account=${this.accountId}`);
       api.reqAccountUpdates(false, this.accountId);
-      debugLog("subscribe", "portfolio stop");
+      log("info", "subscription", "portfolio stop");
     };
   }
 }

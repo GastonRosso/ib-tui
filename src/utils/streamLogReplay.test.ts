@@ -5,6 +5,7 @@ import { describe, it, expect } from "vitest";
 type ParsedLine = {
   lineNo: number;
   timeMs: number;
+  level: string;
   stream: string;
   detail: string;
   fields: Record<string, string>;
@@ -34,7 +35,8 @@ const parseFields = (detail: string): Record<string, string> => {
 };
 
 const parseLine = (line: string): ParsedLine | null => {
-  const match = line.match(/^\[(\d{2}):(\d{2}):(\d{2})\.(\d{3})\]\s+([^:]+):\s*(.*)$/);
+  // New format: [HH:MM:SS.mmm] LEVEL stream: detail
+  const match = line.match(/^\[(\d{2}):(\d{2}):(\d{2})\.(\d{3})\]\s+(\S+)\s+([^:]+):\s*(.*)$/);
   if (!match) return null;
 
   const hh = Number(match[1]);
@@ -42,12 +44,14 @@ const parseLine = (line: string): ParsedLine | null => {
   const ss = Number(match[3]);
   const msec = Number(match[4]);
   const timeMs = (((hh * 60) + mm) * 60 + ss) * 1000 + msec;
-  const stream = match[5];
-  const detail = match[6];
+  const level = match[5];
+  const stream = match[6];
+  const detail = match[7];
 
   return {
     lineNo: -1,
     timeMs,
+    level,
     stream,
     detail,
     fields: parseFields(detail),
@@ -103,7 +107,7 @@ describe("IBKR stream log replay", () => {
     for (let i = 0; i < lines.length; i++) {
       const rawLine = lines[i];
       if (!rawLine) continue;
-      if (rawLine.startsWith("===") && rawLine.includes("debug session start")) {
+      if (rawLine.startsWith("===") && rawLine.includes("log session start")) {
         session += 1;
         state = createInitialState();
         continue;
@@ -117,7 +121,7 @@ describe("IBKR stream log replay", () => {
         lineNo: i + 1,
       };
 
-      if (line.stream === "connection" && line.detail.includes("selectedAccount=")) {
+      if (line.stream === "event.managedAccounts" && line.detail.includes("selectedAccount=")) {
         const selected = line.fields.selectedAccount;
         if (selected) state.selectedAccount = selected;
       }
@@ -130,7 +134,7 @@ describe("IBKR stream log replay", () => {
         sawPnlSingleSubscription = true;
       }
 
-      if (line.stream === "updatePortfolio" && line.detail.startsWith("received")) {
+      if (line.stream === "event.updatePortfolio" && line.detail.startsWith("received")) {
         const account = line.fields.account;
         const conId = toFiniteNumber(line.fields.conId);
         const qty = toFiniteNumber(line.fields.qty);
@@ -156,7 +160,7 @@ describe("IBKR stream log replay", () => {
         });
       }
 
-      if (line.stream === "accountValue" && line.detail.startsWith("received")) {
+      if (line.stream === "event.accountValue" && line.detail.startsWith("received")) {
         const account = line.fields.account;
         const key = line.fields.key;
         const currency = line.fields.currency;
@@ -171,7 +175,7 @@ describe("IBKR stream log replay", () => {
         }
       }
 
-      if (line.stream === "emit") {
+      if (line.stream === "event.emit") {
         const emittedPositions = toFiniteNumber(line.fields.positionsMV);
         const emittedCash = toFiniteNumber(line.fields.cash);
         const emittedTotal = toFiniteNumber(line.fields.totalEquity);

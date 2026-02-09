@@ -1,8 +1,8 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import EventEmitter from "events";
 
-vi.mock("./debug.js", () => ({
-  debugLog: vi.fn(),
+vi.mock("../../utils/logger.js", () => ({
+  log: vi.fn(),
 }));
 
 vi.mock("@stoqey/ib", async () => {

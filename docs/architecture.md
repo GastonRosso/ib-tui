@@ -11,6 +11,8 @@ src/
 │   ├── types.ts          # Interfaces and types
 │   └── ibkr/
 │       └── IBKRBroker.ts # IBKR implementation
+├── utils/
+│   └── logger.ts         # File-only logger with level filtering
 ├── state/
 │   └── store.ts          # Zustand state management
 └── tui/
@@ -178,6 +180,10 @@ type PortfolioUpdate = {
 ```
 
 ## Configuration
+
+CLI flags:
+- `--log-file[=<path>]` - Enable file logging (default path: `logs/ibkr.log`)
+- `--log-level=<error|warn|info|debug>` - Minimum log severity (default: `info`)
 
 Environment variables:
 - `IBKR_HOST` - Gateway host (default: `127.0.0.1`)

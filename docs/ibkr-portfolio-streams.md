@@ -6,7 +6,7 @@ Scope:
 - Runtime path: `subscribePortfolio()` in `src/broker/ibkr/IBKRBroker.ts`
 - Store path: `src/state/store.ts`
 - UI consumer: `src/tui/PortfolioView.tsx`
-- Debug module: `src/broker/ibkr/debug.ts`
+- Logger module: `src/utils/logger.ts`
 
 ## 1) Subscription
 
@@ -104,20 +104,24 @@ Tradeoff: lower update cadence (event-driven, often minutes between updates in q
 - `initialLoadComplete` - set on `accountDownloadEnd`. UI shows "Loading full portfolio..." until this is true.
 - No PnL readiness gates (removed with `reqPnL`/`reqPnLSingle`).
 
-## 7) Debug Logging
+## 7) Logging
 
-Enabled via `--debug-streams` CLI flag:
+Enabled via `--log-file` CLI flag:
 ```bash
-npm run dev -- --debug-streams
+npm run dev -- --log-file=logs/ibkr.log --log-level=debug
 ```
 
-When enabled, compact per-event logs are written to a file with timestamps:
-- `updatePortfolio`: conId, symbol, qty, mktPrice, mktValue
-- `accountValue`: TotalCashBalance updates
-- `accountDownloadEnd`: account name
-- `emit`: summary (positionsMarketValue, cashBalance, totalEquity)
+When enabled, log entries are written to file only (never to terminal). Format: `[HH:MM:SS.mmm] LEVEL stream: detail`.
 
-Default run has no extra logs.
+Broker event streams use `event.*` naming:
+- `event.updatePortfolio`: conId, symbol, qty, mktPrice, mktValue
+- `event.accountValue`: TotalCashBalance updates
+- `event.accountDownloadEnd`: account name
+- `event.emit`: summary (positionsMV, cash, totalEquity)
+
+Levels: `error`, `warn`, `info`, `debug`. Default: `info`. Broker events log at `debug` level.
+
+See `docs/features/logs.md` for full logging documentation.
 
 ## 8) Future Options
 
