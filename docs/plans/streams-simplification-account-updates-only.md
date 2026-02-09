@@ -2,16 +2,15 @@
 
 ## Status
 
-Implemented on 2026-02-09.
+Completed on 2026-02-09.
 
-## Completion and Resolution
-
-1. Simplification completed with `reqAccountUpdates` as the only active portfolio subscription.
-2. `reqPnL` and `reqPnLSingle` were removed from runtime, tests, and docs.
-3. `MarketValueChart` and its dependency were removed.
-4. Recency label (`Updated X ago`) and stale threshold (`>= 180s`) were implemented.
-5. `NetLiquidation` was explicitly removed from runtime behavior in this feature to avoid mixed-source freshness signals.
-6. Decision: reintroduce broker-reported equity (`NetLiquidation` for IBKR) later as a separate feature with explicit dual-metric modeling.
+Outcome:
+- Simplification completed with `reqAccountUpdates` as the only active portfolio subscription.
+- `reqPnL` and `reqPnLSingle` were removed from runtime, tests, and docs.
+- `MarketValueChart` and its dependency were removed.
+- Recency label (`Updated X ago`) and stale threshold (`>= 180s`) were implemented.
+- `NetLiquidation` was explicitly removed from runtime behavior in this feature to avoid mixed-source freshness signals.
+- Broker-reported equity will be reintroduced later as a separate feature with explicit dual-metric modeling.
 
 ## Objective
 
@@ -209,3 +208,9 @@ Mitigation: remove fields at type level and fix compile errors rather than soft 
 1. Implement on `feature/streams-simplification`.
 2. Validate with replay + manual debug logs from real session.
 3. Merge once dashboard behavior is stable and docs are aligned.
+
+## Completion Notes
+
+1. All phases in this plan were implemented in `feature/streams-simplification`.
+2. Validation passed (`npm test`, `npm run typecheck`, `npm run lint`) before merge.
+3. Feature was squashed into one commit and integrated into `main`.
