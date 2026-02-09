@@ -43,9 +43,11 @@ describe("PortfolioView", () => {
     mockUseStore.mockImplementation((selector) => {
       const state = {
         positions: [] as Position[],
-        totalPortfolioValue: 0,
+        totalEquity: 0,
         accountDailyPnL: 0,
         cashBalance: 0,
+        positionPnlReady: false,
+        accountPnlReady: false,
         marketValueHistory: [],
         chartStartTime: null,
         subscribePortfolio: mockSubscribe,
@@ -64,9 +66,11 @@ describe("PortfolioView", () => {
     mockUseStore.mockImplementation((selector) => {
       const state = {
         positions: [createMockPosition()],
-        totalPortfolioValue: 15050,
+        totalEquity: 15050,
         accountDailyPnL: 75.25,
         cashBalance: 0,
+        positionPnlReady: true,
+        accountPnlReady: true,
         marketValueHistory: [],
         chartStartTime: null,
         subscribePortfolio: mockSubscribe,
@@ -88,9 +92,11 @@ describe("PortfolioView", () => {
     mockUseStore.mockImplementation((selector) => {
       const state = {
         positions: [createMockPosition()],
-        totalPortfolioValue: 15050,
+        totalEquity: 15050,
         accountDailyPnL: 75.25,
         cashBalance: 0,
+        positionPnlReady: true,
+        accountPnlReady: true,
         marketValueHistory: [],
         chartStartTime: null,
         subscribePortfolio: mockSubscribe,
@@ -115,9 +121,11 @@ describe("PortfolioView", () => {
     mockUseStore.mockImplementation((selector) => {
       const state = {
         positions: [createMockPosition()],
-        totalPortfolioValue: 15050,
+        totalEquity: 15050,
         accountDailyPnL: 75.25,
         cashBalance: 0,
+        positionPnlReady: true,
+        accountPnlReady: true,
         marketValueHistory: [],
         chartStartTime: null,
         subscribePortfolio: mockSubscribe,
@@ -140,9 +148,11 @@ describe("PortfolioView", () => {
           createMockPosition({ conId: 1, symbol: "AAPL", marketValue: 7500 }),
           createMockPosition({ conId: 2, symbol: "MSFT", marketValue: 2500 }),
         ],
-        totalPortfolioValue: 10000,
+        totalEquity: 10000,
         accountDailyPnL: 100,
         cashBalance: 0,
+        positionPnlReady: true,
+        accountPnlReady: true,
         marketValueHistory: [],
         chartStartTime: null,
         subscribePortfolio: mockSubscribe,
@@ -166,9 +176,11 @@ describe("PortfolioView", () => {
           createMockPosition({ conId: 2, symbol: "MSFT" }),
           createMockPosition({ conId: 3, symbol: "GOOGL" }),
         ],
-        totalPortfolioValue: 45150,
+        totalEquity: 45150,
         accountDailyPnL: 225.75,
         cashBalance: 0,
+        positionPnlReady: true,
+        accountPnlReady: true,
         marketValueHistory: [],
         chartStartTime: null,
         subscribePortfolio: mockSubscribe,
@@ -194,9 +206,11 @@ describe("PortfolioView", () => {
             unrealizedPnL: -500,
           }),
         ],
-        totalPortfolioValue: 15050,
+        totalEquity: 15050,
         accountDailyPnL: -150.5,
         cashBalance: 0,
+        positionPnlReady: true,
+        accountPnlReady: true,
         marketValueHistory: [],
         chartStartTime: null,
         subscribePortfolio: mockSubscribe,
@@ -222,9 +236,11 @@ describe("PortfolioView", () => {
             unrealizedPnL: 1000,
           }),
         ],
-        totalPortfolioValue: 15050,
+        totalEquity: 15050,
         accountDailyPnL: 250.0,
         cashBalance: 0,
+        positionPnlReady: true,
+        accountPnlReady: true,
         marketValueHistory: [],
         chartStartTime: null,
         subscribePortfolio: mockSubscribe,
@@ -238,5 +254,28 @@ describe("PortfolioView", () => {
 
     expect(frame).toContain("$250.00");
     expect(frame).toContain("$1,000.00");
+  });
+
+  it("shows placeholder for Day P&L before pnl readiness", () => {
+    mockUseStore.mockImplementation((selector) => {
+      const state = {
+        positions: [createMockPosition({ dailyPnL: 0 })],
+        totalEquity: 15050,
+        accountDailyPnL: 0,
+        cashBalance: 0,
+        positionPnlReady: false,
+        accountPnlReady: false,
+        marketValueHistory: [],
+        chartStartTime: null,
+        subscribePortfolio: mockSubscribe,
+        initialLoadComplete: true,
+      };
+      return selector ? selector(state as never) : state;
+    });
+
+    const { lastFrame } = render(<PortfolioView />);
+    const frame = lastFrame();
+
+    expect(frame).toContain("--");
   });
 });

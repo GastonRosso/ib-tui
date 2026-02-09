@@ -65,9 +65,10 @@ const HeaderRow: React.FC = () => (
   </Box>
 );
 
-const PositionRow: React.FC<{ position: Position; totalValue: number }> = ({
+const PositionRow: React.FC<{ position: Position; totalValue: number; positionPnlReady: boolean }> = ({
   position,
   totalValue,
+  positionPnlReady,
 }) => {
   const portfolioPct = totalValue > 0 ? (position.marketValue / totalValue) * 100 : 0;
   const previousValue = position.marketValue - position.dailyPnL;
@@ -80,10 +81,10 @@ const PositionRow: React.FC<{ position: Position; totalValue: number }> = ({
       <Text>{padLeft(formatCurrency(position.marketPrice), COLUMNS.price)}</Text>
       <Text>{padLeft(formatCurrency(position.avgCost), COLUMNS.avgCost)}</Text>
       <Box width={COLUMNS.dayPnL} justifyContent="flex-end">
-        <PnLText value={position.dailyPnL} />
+        {positionPnlReady ? <PnLText value={position.dailyPnL} /> : <Text dimColor>--</Text>}
       </Box>
       <Box width={COLUMNS.dayPnLPct} justifyContent="flex-end">
-        <PnLText value={dayPnLPct} format="percent" />
+        {positionPnlReady ? <PnLText value={dayPnLPct} format="percent" /> : <Text dimColor>--</Text>}
       </Box>
       <Box width={COLUMNS.unrealizedPnL} justifyContent="flex-end">
         <PnLText value={position.unrealizedPnL} />
@@ -119,7 +120,8 @@ const SummaryRow: React.FC<{
   positions: Position[];
   totalValue: number;
   accountDailyPnL: number;
-}> = ({ positions, totalValue, accountDailyPnL }) => {
+  accountPnlReady: boolean;
+}> = ({ positions, totalValue, accountDailyPnL, accountPnlReady }) => {
   const totalUnrealizedPnL = positions.reduce((sum, p) => sum + p.unrealizedPnL, 0);
   const previousTotalValue = totalValue - accountDailyPnL;
   const dayPnLPct = previousTotalValue !== 0 ? (accountDailyPnL / previousTotalValue) * 100 : 0;
@@ -131,14 +133,22 @@ const SummaryRow: React.FC<{
       <Text>{padLeft("", COLUMNS.price)}</Text>
       <Text>{padLeft("", COLUMNS.avgCost)}</Text>
       <Box width={COLUMNS.dayPnL} justifyContent="flex-end">
-        <Text bold>
-          <PnLText value={accountDailyPnL} />
-        </Text>
+        {accountPnlReady ? (
+          <Text bold>
+            <PnLText value={accountDailyPnL} />
+          </Text>
+        ) : (
+          <Text bold dimColor>--</Text>
+        )}
       </Box>
       <Box width={COLUMNS.dayPnLPct} justifyContent="flex-end">
-        <Text bold>
-          <PnLText value={dayPnLPct} format="percent" />
-        </Text>
+        {accountPnlReady ? (
+          <Text bold>
+            <PnLText value={dayPnLPct} format="percent" />
+          </Text>
+        ) : (
+          <Text bold dimColor>--</Text>
+        )}
       </Box>
       <Box width={COLUMNS.unrealizedPnL} justifyContent="flex-end">
         <Text bold>
@@ -152,7 +162,16 @@ const SummaryRow: React.FC<{
 };
 
 export const PortfolioView: React.FC = () => {
-  const { positions, totalPortfolioValue, accountDailyPnL, cashBalance, subscribePortfolio, initialLoadComplete } = useStore();
+  const {
+    positions,
+    totalEquity,
+    accountDailyPnL,
+    cashBalance,
+    positionPnlReady,
+    accountPnlReady,
+    subscribePortfolio,
+    initialLoadComplete,
+  } = useStore();
 
   useEffect(() => {
     const unsubscribe = subscribePortfolio();
@@ -186,14 +205,16 @@ export const PortfolioView: React.FC = () => {
         <PositionRow
           key={position.conId}
           position={position}
-          totalValue={totalPortfolioValue + cashBalance}
+          totalValue={totalEquity}
+          positionPnlReady={positionPnlReady}
         />
       ))}
-      <CashRow cashBalance={cashBalance} totalValue={totalPortfolioValue + cashBalance} />
+      <CashRow cashBalance={cashBalance} totalValue={totalEquity} />
       <SummaryRow
         positions={positions}
-        totalValue={totalPortfolioValue + cashBalance}
+        totalValue={totalEquity}
         accountDailyPnL={accountDailyPnL}
+        accountPnlReady={accountPnlReady}
       />
     </Box>
   );

@@ -9,9 +9,12 @@ type AppState = {
   connectionStatus: ConnectionStatus;
   error: string | null;
   positions: Position[];
-  totalPortfolioValue: number;
+  positionsMarketValue: number;
+  totalEquity: number;
   accountDailyPnL: number;
   cashBalance: number;
+  positionPnlReady: boolean;
+  accountPnlReady: boolean;
   marketValueHistory: number[];
   chartStartTime: number | null;
   lastHistoryTimestamp: number | null;
@@ -30,9 +33,12 @@ export const useStore = create<AppState>((set, get) => ({
   connectionStatus: "disconnected",
   error: null,
   positions: [],
-  totalPortfolioValue: 0,
+  positionsMarketValue: 0,
+  totalEquity: 0,
   accountDailyPnL: 0,
   cashBalance: 0,
+  positionPnlReady: false,
+  accountPnlReady: false,
   marketValueHistory: [],
   chartStartTime: null,
   lastHistoryTimestamp: null,
@@ -51,9 +57,12 @@ export const useStore = create<AppState>((set, get) => ({
         set({
           connectionStatus: "disconnected",
           positions: [],
-          totalPortfolioValue: 0,
+          positionsMarketValue: 0,
+          totalEquity: 0,
           accountDailyPnL: 0,
           cashBalance: 0,
+          positionPnlReady: false,
+          accountPnlReady: false,
           marketValueHistory: [],
           chartStartTime: null,
           lastHistoryTimestamp: null,
@@ -76,9 +85,12 @@ export const useStore = create<AppState>((set, get) => ({
     set({
       connectionStatus: "disconnected",
       positions: [],
-      totalPortfolioValue: 0,
+      positionsMarketValue: 0,
+      totalEquity: 0,
       accountDailyPnL: 0,
       cashBalance: 0,
+      positionPnlReady: false,
+      accountPnlReady: false,
       marketValueHistory: [],
       chartStartTime: null,
       lastHistoryTimestamp: null,
@@ -103,8 +115,7 @@ export const useStore = create<AppState>((set, get) => ({
         let lastHistoryTimestamp = state.lastHistoryTimestamp;
         let chartStartValue = state.chartStartValue;
 
-        // Include cash in total value for chart
-        const newValue = update.totalPortfolioValue + update.cashBalance;
+        const newValue = update.totalEquity;
         const now = Date.now();
         const lastValue = history[history.length - 1];
 
@@ -139,9 +150,12 @@ export const useStore = create<AppState>((set, get) => ({
 
         return {
           positions: update.positions,
-          totalPortfolioValue: update.totalPortfolioValue,
+          positionsMarketValue: update.positionsMarketValue,
+          totalEquity: update.totalEquity,
           accountDailyPnL: update.accountDailyPnL,
           cashBalance: update.cashBalance,
+          positionPnlReady: update.positionPnlReady,
+          accountPnlReady: update.accountPnlReady,
           marketValueHistory: history,
           chartStartTime: startTime,
           lastHistoryTimestamp,

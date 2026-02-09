@@ -54,10 +54,13 @@ export type Quote = {
 
 export type PortfolioUpdate = {
   positions: Position[];
-  totalPortfolioValue: number;
+  positionsMarketValue: number;
+  totalEquity: number;
   accountDailyPnL: number;
   cashBalance: number;
   initialLoadComplete: boolean;
+  positionPnlReady: boolean;
+  accountPnlReady: boolean;
 };
 
 export type Broker = {

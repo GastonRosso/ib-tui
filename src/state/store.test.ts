@@ -25,10 +25,13 @@ vi.mock("../broker/ibkr/IBKRBroker.js", () => {
               conId: 265598,
             },
           ],
-          totalPortfolioValue: 15050,
+          positionsMarketValue: 15050,
+          totalEquity: 20050,
           accountDailyPnL: 75.25,
           cashBalance: 5000,
           initialLoadComplete: true,
+          positionPnlReady: true,
+          accountPnlReady: true,
         });
         return vi.fn();
       }),
@@ -42,9 +45,12 @@ describe("store", () => {
       connectionStatus: "disconnected",
       error: null,
       positions: [],
-      totalPortfolioValue: 0,
+      positionsMarketValue: 0,
+      totalEquity: 0,
       accountDailyPnL: 0,
       cashBalance: 0,
+      positionPnlReady: false,
+      accountPnlReady: false,
       marketValueHistory: [],
       chartStartTime: null,
       lastHistoryTimestamp: null,
@@ -64,12 +70,20 @@ describe("store", () => {
       expect(state.positions[0].quantity).toBe(100);
     });
 
-    it("updates totalPortfolioValue from broker subscription", () => {
+    it("updates totalEquity from broker subscription", () => {
       const { subscribePortfolio } = useStore.getState();
       subscribePortfolio();
 
       const state = useStore.getState();
-      expect(state.totalPortfolioValue).toBe(15050);
+      expect(state.totalEquity).toBe(20050);
+    });
+
+    it("updates positionsMarketValue from broker subscription", () => {
+      const { subscribePortfolio } = useStore.getState();
+      subscribePortfolio();
+
+      const state = useStore.getState();
+      expect(state.positionsMarketValue).toBe(15050);
     });
 
     it("updates accountDailyPnL from broker subscription", () => {
@@ -78,6 +92,15 @@ describe("store", () => {
 
       const state = useStore.getState();
       expect(state.accountDailyPnL).toBe(75.25);
+    });
+
+    it("updates pnl readiness flags from broker subscription", () => {
+      const { subscribePortfolio } = useStore.getState();
+      subscribePortfolio();
+
+      const state = useStore.getState();
+      expect(state.positionPnlReady).toBe(true);
+      expect(state.accountPnlReady).toBe(true);
     });
 
     it("returns an unsubscribe function", () => {
@@ -97,8 +120,11 @@ describe("store", () => {
 
       const state = useStore.getState();
       expect(state.positions).toHaveLength(0);
-      expect(state.totalPortfolioValue).toBe(0);
+      expect(state.totalEquity).toBe(0);
+      expect(state.positionsMarketValue).toBe(0);
       expect(state.accountDailyPnL).toBe(0);
+      expect(state.positionPnlReady).toBe(false);
+      expect(state.accountPnlReady).toBe(false);
       expect(state.connectionStatus).toBe("disconnected");
     });
   });
