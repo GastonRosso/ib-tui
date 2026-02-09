@@ -7,7 +7,7 @@ Outcome:
 - Logger refactored from boolean `debugLog()` to level-aware `log(level, stream, detail)`.
 - CLI changed from `--debug-streams`/`--debug-streams-file` to `--log-file`/`--log-level`.
 - Exit-time stdout message removed; logger is file-only.
-- All broker callsites migrated to `event.*` stream prefix with appropriate severity.
+- Broker callbacks migrated to `event.*` streams, with state snapshots logged separately as `state.snapshot`.
 - New `logger.test.ts` with level filtering tests; replay test updated for new format.
 - Documentation updated across architecture, portfolio streams, and new `docs/features/logs.md`.
 
@@ -30,6 +30,7 @@ Refactor logging so the TUI never writes debug/log noise to terminal output, kee
 - `--log-level=<error|warn|info|debug>` controls minimum severity (default: `info`).
 4. No backward-compatibility aliases are kept. Legacy flags are removed in this refactor.
 5. Broker callback/event logs are emitted only at `debug` level and use a consistent `event.<name>` stream prefix so replay tests can filter them deterministically.
+6. Emitted portfolio-state snapshots are logged at `debug` level as `state.snapshot` (not under `event.*`).
 
 ## Implementation Plan
 
@@ -84,8 +85,9 @@ Changes:
 - app lifecycle milestones (`connect`, `disconnect requested`) -> `info`
 - IBKR callback/event logs (`updatePortfolio`, `accountValue`, `accountDownloadEnd`, emit summaries, ignored branches) -> `debug`
 3. Standardize broker callback/event stream naming:
-- `event.<name>` (for example `event.updatePortfolio`, `event.accountValue`, `event.emit`)
-4. Keep event content stable so replay tooling remains useful.
+- `event.<name>` (for example `event.updatePortfolio`, `event.accountValue`, `event.accountDownloadEnd`)
+4. Log emitted portfolio state snapshots separately as `state.snapshot`.
+5. Keep event content stable so replay tooling remains useful.
 
 Acceptance checks:
 1. At `info` level, high-level lifecycle logs remain.
@@ -103,8 +105,8 @@ Changes:
 - level filtering
 - default level behavior
 2. Update replay parser to accept new level token in log format.
-3. Update replay parser to target only `event.*` streams for broker-event invariants.
-4. Keep replay invariants for emit/account consistency.
+3. Update replay parser to target only `event.*` streams for broker-event inputs.
+4. Validate `state.snapshot` invariants for emit/account consistency.
 
 Acceptance checks:
 1. `npm test` passes with updated parser.
@@ -140,7 +142,7 @@ Acceptance checks:
 2. `npm test` passes.
 3. Manual run (new flags): `npm run dev -- --log-file=logs/ibkr.log --log-level=debug`.
 4. TUI renders cleanly with no logger messages printed in terminal.
-5. Replay test filters broker events by `event.*` and passes.
+5. Replay test filters broker events by `event.*` and validates emitted state via `state.snapshot`.
 
 ## Risks and Mitigations
 

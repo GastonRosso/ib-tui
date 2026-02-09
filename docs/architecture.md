@@ -96,6 +96,7 @@ type AppState = {
 ```
 
 The store bridges broker events to React components. When `subscribePortfolio()` callback fires, it updates state, triggering component re-renders.
+The store also emits `state.snapshot` debug logs after applying portfolio updates, so emitted snapshots reflect UI-visible state instead of raw broker callbacks.
 
 ### 4. TUI Components (`src/tui/`)
 

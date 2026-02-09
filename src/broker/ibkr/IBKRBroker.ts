@@ -148,11 +148,6 @@ export class IBKRBroker implements Broker {
 
     const emitUpdate = () => {
       const totalEquity = computeTotalEquity();
-      log(
-        "debug",
-        "event.emit",
-        `positionsMV=${positionsMarketValue.toFixed(2)} cash=${cashBalance.toFixed(2)} totalEquity=${totalEquity.toFixed(2)}`
-      );
       callback({
         positions: Array.from(positions.values()),
         positionsMarketValue,

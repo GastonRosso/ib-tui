@@ -1,6 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { useStore } from "./store.js";
 import type { PortfolioUpdate } from "../broker/types.js";
+import { log } from "../utils/logger.js";
 
 vi.mock("../broker/ibkr/IBKRBroker.js", () => {
   return {
@@ -37,8 +38,13 @@ vi.mock("../broker/ibkr/IBKRBroker.js", () => {
   };
 });
 
+vi.mock("../utils/logger.js", () => ({
+  log: vi.fn(),
+}));
+
 describe("store", () => {
   beforeEach(() => {
+    vi.clearAllMocks();
     useStore.setState({
       connectionStatus: "disconnected",
       error: null,
@@ -91,6 +97,25 @@ describe("store", () => {
       const unsubscribe = subscribePortfolio();
 
       expect(typeof unsubscribe).toBe("function");
+    });
+
+    it("logs state.snapshot when portfolio state changes", () => {
+      const { subscribePortfolio } = useStore.getState();
+      subscribePortfolio();
+
+      expect(log).toHaveBeenCalledWith(
+        "debug",
+        "state.snapshot",
+        expect.stringContaining("positionsMV=15050.00")
+      );
+    });
+
+    it("does not log duplicate state.snapshot for unchanged state", () => {
+      const { subscribePortfolio } = useStore.getState();
+      subscribePortfolio();
+      subscribePortfolio();
+
+      expect(log).toHaveBeenCalledTimes(1);
     });
   });
 

@@ -117,7 +117,9 @@ Broker event streams use `event.*` naming:
 - `event.updatePortfolio`: conId, symbol, qty, mktPrice, mktValue
 - `event.accountValue`: TotalCashBalance updates
 - `event.accountDownloadEnd`: account name
-- `event.emit`: summary (positionsMV, cash, totalEquity)
+
+State snapshots use `state.snapshot` (emitted by the store when broker updates are applied):
+- `state.snapshot`: summary (positionsMV, cash, totalEquity)
 
 Levels: `error`, `warn`, `info`, `debug`. Default: `info`. Broker events log at `debug` level.
 

@@ -175,7 +175,7 @@ describe("IBKR stream log replay", () => {
         }
       }
 
-      if (line.stream === "event.emit") {
+      if (line.stream === "state.snapshot") {
         const emittedPositions = toFiniteNumber(line.fields.positionsMV);
         const emittedCash = toFiniteNumber(line.fields.cash);
         const emittedTotal = toFiniteNumber(line.fields.totalEquity);

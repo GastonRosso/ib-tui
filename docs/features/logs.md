@@ -46,7 +46,7 @@ Example lines:
 [14:32:01.456] DEBUG event.connected: received
 [14:32:01.789] DEBUG event.managedAccounts: accounts=DU123456 selectedAccount=DU123456
 [14:32:02.100] DEBUG event.updatePortfolio: received account=DU123456 conId=265598 sym=AAPL qty=100 mktPrice=150.50 mktValue=15050.00
-[14:32:02.101] DEBUG event.emit: positionsMV=15050.00 cash=5000.00 totalEquity=20050.00
+[14:32:02.101] DEBUG state.snapshot: positionsMV=15050.00 cash=5000.00 totalEquity=20050.00
 ```
 
 ## Stream Naming Convention
@@ -56,17 +56,18 @@ Broker callback/event log streams use the `event.*` prefix:
 - `event.updatePortfolio` — position updates from IBKR
 - `event.accountValue` — account value updates (cash balance)
 - `event.accountDownloadEnd` — end of initial account snapshot
-- `event.emit` — portfolio update emitted to the app
 - `event.nextValidId` — order ID assignment
 - `event.connected` — socket connected callback
 - `event.disconnected` — socket disconnected callback
 - `event.managedAccounts` — account list callback
 
+State snapshots use `state.snapshot` and are logged by the store layer whenever the applied portfolio state changes.
+
 Non-event streams (no prefix): `connection`, `subscription`, `error`.
 
 ## Log Replay Test
 
-The replay test (`src/utils/streamLogReplay.test.ts`) re-processes a captured log file and verifies that every `event.emit` line is consistent with the portfolio state built up from preceding `event.updatePortfolio` and `event.accountValue` entries.
+The replay test (`src/utils/streamLogReplay.test.ts`) re-processes a captured log file and verifies that every `state.snapshot` line is consistent with the portfolio state built up from preceding `event.updatePortfolio` and `event.accountValue` entries.
 
 ### What it checks
 
@@ -80,7 +81,7 @@ The replay test (`src/utils/streamLogReplay.test.ts`) re-processes a captured lo
 Point `IBKR_STREAM_LOG_PATH` at a log file captured with `--log-level=debug`:
 
 ```bash
-# 1. Capture a log with debug level (includes all event.* entries)
+# 1. Capture a log with debug level (includes event.* callbacks + state.snapshot)
 npm run dev -- --log-file=logs/ibkr.log --log-level=debug
 
 # 2. Run the replay test against the captured log
@@ -100,8 +101,8 @@ grep 'event\.' logs/ibkr.log
 # Only portfolio updates
 grep 'event.updatePortfolio' logs/ibkr.log
 
-# Only emits (useful for checking computed values)
-grep 'event.emit' logs/ibkr.log
+# Only state snapshots (useful for checking computed values)
+grep 'state.snapshot' logs/ibkr.log
 ```
 
 ## Design Constraints

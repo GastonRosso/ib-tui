@@ -1,6 +1,7 @@
 import { create } from "zustand";
 import { IBKRBroker } from "../broker/ibkr/IBKRBroker.js";
 import type { Broker, Position } from "../broker/types.js";
+import { log } from "../utils/logger.js";
 
 type ConnectionStatus = "disconnected" | "connecting" | "connected" | "error";
 
@@ -81,6 +82,14 @@ export const useStore = create<AppState>((set, get) => ({
   subscribePortfolio: () => {
     const { broker } = get();
     return broker.subscribePortfolio((update) => {
+      const prev = get();
+      const snapshotChanged =
+        prev.positionsMarketValue !== update.positionsMarketValue ||
+        prev.cashBalance !== update.cashBalance ||
+        prev.totalEquity !== update.totalEquity ||
+        prev.initialLoadComplete !== update.initialLoadComplete ||
+        prev.lastPortfolioUpdateAt !== update.lastPortfolioUpdateAt;
+
       set({
         positions: update.positions,
         positionsMarketValue: update.positionsMarketValue,
@@ -89,6 +98,14 @@ export const useStore = create<AppState>((set, get) => ({
         initialLoadComplete: update.initialLoadComplete,
         lastPortfolioUpdateAt: update.lastPortfolioUpdateAt,
       });
+
+      if (snapshotChanged) {
+        log(
+          "debug",
+          "state.snapshot",
+          `positionsMV=${update.positionsMarketValue.toFixed(2)} cash=${update.cashBalance.toFixed(2)} totalEquity=${update.totalEquity.toFixed(2)}`
+        );
+      }
     });
   },
 }));
