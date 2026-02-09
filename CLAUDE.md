@@ -57,3 +57,15 @@ The app connects to TWS (Trader Workstation) or IB Gateway via their socket API 
 4. **Test**: Ensure all tests pass (`npm run test`)
 5. **Commit**: Descriptive commit message
 6. **Merge**: PR or merge to main when complete
+
+### Plan Document Convention
+
+When creating or updating files under `docs/plans/`, use the same completion format consistently:
+
+1. During planning:
+   - Keep `## Status` as `Planned on YYYY-MM-DD.`
+2. When finished:
+   - Update `## Status` to `Completed on YYYY-MM-DD.`
+   - Add `Outcome:` immediately below status using bullet points.
+   - Add a final `## Completion Notes` section with numbered items.
+3. Do not use alternative completion headings (for example, avoid ad-hoc sections like `## Completion and Resolution`).
