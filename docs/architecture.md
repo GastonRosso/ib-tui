@@ -2,6 +2,8 @@
 
 TUI application for Interactive Brokers built with TypeScript, Ink (React for CLI), and Zustand.
 
+For a code-trace walkthrough of startup, broker creation, connection, and event propagation with Mermaid sequence diagrams and ordered `file:line` references, see [`docs/main-flow.md`](main-flow.md).
+
 ## Project Structure
 
 ```
