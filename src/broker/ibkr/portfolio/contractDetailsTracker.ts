@@ -1,19 +1,5 @@
 import type { PositionMarketHours } from "../../types.js";
-
-type ContractSeed = {
-  conId?: number;
-  symbol?: string;
-  currency?: string;
-  exchange?: string;
-  secType?: string;
-};
-
-type DetailsPayload = {
-  contract?: { conId?: number };
-  timeZoneId?: string;
-  liquidHours?: string;
-  tradingHours?: string;
-};
+import type { PortfolioContractSeed, ContractDetailsPayload } from "./types.js";
 
 export type ContractDetailsRequest = {
   reqId: number;
@@ -37,7 +23,7 @@ export const createContractDetailsTracker = (startReqId = 90_000) => {
   const pendingConIds = new Set<number>();
   let nextReqId = startReqId;
 
-  const nextRequest = (contract: ContractSeed): ContractDetailsRequest | null => {
+  const nextRequest = (contract: PortfolioContractSeed): ContractDetailsRequest | null => {
     const conId = contract.conId;
     if (conId === undefined || conId === null) return null;
     if (marketHoursByConId.has(conId) || pendingConIds.has(conId)) return null;
@@ -56,7 +42,7 @@ export const createContractDetailsTracker = (startReqId = 90_000) => {
     };
   };
 
-  const onContractDetails = (reqId: number, details: DetailsPayload): ContractDetailsHit | null => {
+  const onContractDetails = (reqId: number, details: ContractDetailsPayload): ContractDetailsHit | null => {
     const conId = reqIdToConId.get(reqId) ?? details.contract?.conId;
     if (!conId) return null;
     const marketHours: PositionMarketHours = {

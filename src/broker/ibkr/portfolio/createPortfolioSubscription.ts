@@ -2,22 +2,14 @@ import { EventName } from "@stoqey/ib";
 import type { PortfolioUpdate } from "../../types.js";
 import { createPortfolioProjection } from "./portfolioProjection.js";
 import { createContractDetailsTracker } from "./contractDetailsTracker.js";
-
-type ApiLike = {
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  on(event: string, handler: (...args: any[]) => void): void;
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  removeListener(event: string, handler: (...args: any[]) => void): void;
-  reqAccountUpdates(subscribe: boolean, accountId: string): void;
-  reqContractDetails(reqId: number, contract: unknown): void;
-};
+import type { PortfolioApi, PortfolioContractSeed, ContractDetailsPayload } from "./types.js";
 
 type LogFn = (level: "error" | "warn" | "info" | "debug", stream: string, detail: string) => void;
 
 const noop: LogFn = () => {};
 
 type Params = {
-  api: ApiLike;
+  api: PortfolioApi;
   accountId: string | (() => string);
   callback: (update: PortfolioUpdate) => void;
   now?: () => number;
@@ -37,14 +29,14 @@ export const createPortfolioSubscription = ({ api, accountId: accountIdOrFn, cal
   };
 
   const onPortfolioUpdate = (
-    contract: { conId?: number; symbol?: string; currency?: string; exchange?: string; secType?: string },
+    contract: PortfolioContractSeed,
     pos: number,
     marketPrice: number,
     marketValue: number,
     avgCost?: number,
     unrealizedPnL?: number,
     realizedPnL?: number,
-    accountName?: string
+    accountName?: string,
   ) => {
     log(
       "debug",
@@ -98,7 +90,7 @@ export const createPortfolioSubscription = ({ api, accountId: accountIdOrFn, cal
 
   const onContractDetails = (
     reqId: number,
-    details: { contract?: { conId?: number }; timeZoneId?: string; liquidHours?: string; tradingHours?: string }
+    details: ContractDetailsPayload,
   ) => {
     log(
       "debug",
