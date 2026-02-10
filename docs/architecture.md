@@ -92,6 +92,7 @@ Pure utility that determines whether a market is open or closed at a given time,
 - `createPortfolioSubscription.ts` — orchestrates event wiring between the IB API and the projection/tracker modules.
 - `portfolioProjection.ts` — pure state container that accumulates position updates, cash balance, and market hours into a `PortfolioUpdate` snapshot.
 - `contractDetailsTracker.ts` — deduplicates `reqContractDetails` requests and correlates responses back to contract IDs.
+- `types.ts` — adapter-boundary IB event types (`PortfolioApi`, `PortfolioEventMap`, `PortfolioContractSeed`, `ContractDetailsPayload`). Implementation-only types stay in file scope.
 
 ### 3. State Management (`src/state/store.ts`)
 
@@ -118,6 +119,11 @@ type AppState = {
 
 The store bridges broker events to React components. When `subscribePortfolio()` callback fires, it updates state, triggering component re-renders.
 The store also emits `state.snapshot` debug logs after applying portfolio updates, so emitted snapshots reflect UI-visible state instead of raw broker callbacks.
+
+UI components use selector-based Zustand subscriptions (`useStore((s) => s.field)`) to minimize re-renders.
+
+**Shared primitives (`src/state/types.ts`):**
+- `ConnectionStatus` — union of `"disconnected" | "connecting" | "connected" | "error"`, shared across store and UI.
 
 ### 4. TUI Components (`src/tui/`)
 
