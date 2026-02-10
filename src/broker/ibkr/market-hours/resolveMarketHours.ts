@@ -1,8 +1,4 @@
-export type PositionMarketHours = {
-  timeZoneId: string | null;
-  liquidHours: string | null;
-  tradingHours: string | null;
-};
+import type { PositionMarketHours } from "../../types.js";
 
 export type MarketHoursState = "open" | "closed" | "unknown";
 

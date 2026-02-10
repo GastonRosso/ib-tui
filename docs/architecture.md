@@ -10,8 +10,17 @@ src/
 ├── broker/               # Broker abstraction layer
 │   ├── types.ts          # Interfaces and types
 │   └── ibkr/
-│       ├── IBKRBroker.ts # IBKR implementation
-│       └── marketHours.ts # Market hours calculator (pure utility)
+│       ├── index.ts      # Public barrel export (IBKRBroker)
+│       ├── IBKRBroker.ts # Thin adapter implementing Broker interface
+│       ├── market-hours/
+│       │   ├── index.ts
+│       │   ├── resolveMarketHours.ts  # Pure market hours calculator
+│       │   └── resolveMarketHours.test.ts
+│       └── portfolio/
+│           ├── createPortfolioSubscription.ts  # Event wiring orchestration
+│           ├── portfolioProjection.ts          # Pure portfolio state container
+│           ├── contractDetailsTracker.ts       # Request dedup and correlation
+│           └── types.ts
 ├── utils/
 │   └── logger.ts         # File-only logger with level filtering
 ├── state/
@@ -48,9 +57,9 @@ type Broker = {
 
 This abstraction allows swapping IBKR for other brokers or mocks without touching UI or state code.
 
-### 2. IBKR Implementation (`src/broker/ibkr/IBKRBroker.ts`)
+### 2. IBKR Implementation (`src/broker/ibkr/`)
 
-Uses `@stoqey/ib` library to communicate with TWS/IB Gateway via socket API.
+`IBKRBroker` is a thin adapter that implements `Broker` and delegates subscription logic to focused modules under `src/broker/ibkr/portfolio/`. Uses `@stoqey/ib` library to communicate with TWS/IB Gateway via socket API.
 
 **Connection:**
 - Connects to `IBKR_HOST:IBKR_PORT` (defaults: `127.0.0.1:4001`)
@@ -74,9 +83,15 @@ Single source of truth: `updatePortfolio` owns position data and valuation, `upd
 - Updates are event-driven, typically arriving on portfolio changes rather than at a fixed interval.
 - This is slower than the previous multi-stream model (~1s from `pnlSingle`) but eliminates cross-stream drift and merge complexity.
 
-**Market Hours (`src/broker/ibkr/marketHours.ts`):**
+**Market Hours (`src/broker/ibkr/market-hours/resolveMarketHours.ts`):**
 
 Pure utility that determines whether a market is open or closed at a given time, using IB's `liquidHours`/`tradingHours` schedule strings and timezone metadata from `reqContractDetails`. Supports both legacy and TWS v970+ hour formats, normalizes 14 IB timezone abbreviations to IANA identifiers, and is fully deterministic (injectable `nowMs`). See [`docs/features/market-hours.md`](features/market-hours.md) for full documentation.
+
+**Portfolio Modules (`src/broker/ibkr/portfolio/`):**
+
+- `createPortfolioSubscription.ts` — orchestrates event wiring between the IB API and the projection/tracker modules.
+- `portfolioProjection.ts` — pure state container that accumulates position updates, cash balance, and market hours into a `PortfolioUpdate` snapshot.
+- `contractDetailsTracker.ts` — deduplicates `reqContractDetails` requests and correlates responses back to contract IDs.
 
 ### 3. State Management (`src/state/store.ts`)
 

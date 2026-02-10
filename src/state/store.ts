@@ -1,5 +1,5 @@
 import { create } from "zustand";
-import { IBKRBroker } from "../broker/ibkr/IBKRBroker.js";
+import { IBKRBroker } from "../broker/ibkr/index.js";
 import type { Broker, Position } from "../broker/types.js";
 import { log } from "../utils/logger.js";
 

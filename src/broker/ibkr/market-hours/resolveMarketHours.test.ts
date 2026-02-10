@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { resolveMarketHours, formatMarketHoursCountdown } from "./marketHours.js";
+import { resolveMarketHours, formatMarketHoursCountdown } from "./resolveMarketHours.js";
 
 describe("resolveMarketHours", () => {
   it("returns OPEN and time-to-close for US equity hours", () => {

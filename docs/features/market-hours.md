@@ -21,22 +21,21 @@ The countdown refreshes every 30 seconds via a local timer, so it continues upda
 The feature spans three layers:
 
 ```
-IBKRBroker                    Pure Utility                  UI
-reqContractDetails ──►  resolveMarketHours()  ──►  PortfolioView
-(per conId, cached)     (deterministic, testable)    (Mkt Hrs column)
+Portfolio Subscription             Pure Utility                  UI
+contractDetailsTracker ──►   resolveMarketHours()  ──►  PortfolioView
+(per conId, cached)          (deterministic, testable)    (Mkt Hrs column)
 ```
 
-### 1. Data Enrichment (`src/broker/ibkr/IBKRBroker.ts`)
+### 1. Data Enrichment (`src/broker/ibkr/portfolio/`)
 
-When `subscribePortfolio()` receives a position via `updatePortfolio`, it checks whether contract details have been fetched for that `conId`. If not, it calls `reqContractDetails` to retrieve the exchange schedule.
+When the portfolio subscription receives a position via `updatePortfolio`, the `contractDetailsTracker` checks whether contract details have been fetched for that `conId`. If not, it issues a `reqContractDetails` call to retrieve the exchange schedule.
 
-Key internals:
-- `marketHoursByConId` — `Map<number, PositionMarketHours>` cache. Populated once per conId, never re-requested.
-- `reqIdToConId` — maps IB request IDs back to contract IDs for correlating `contractDetails` responses.
-- `pendingConIds` — tracks in-flight requests to avoid duplicates.
-- Request IDs start at `90_000` to avoid collisions with other IB API request sequences.
+Key modules:
+- `contractDetailsTracker.ts` — deduplicates requests per conId, correlates responses via request ID, and caches market hours data.
+- `portfolioProjection.ts` — pure state container that attaches market hours to positions via `attachMarketHours()`.
+- `createPortfolioSubscription.ts` — orchestrates event wiring between the IB API and the projection/tracker modules.
 
-On receiving `contractDetails`, the broker extracts three fields and caches them:
+On receiving `contractDetails`, the tracker extracts three fields and caches them:
 
 ```typescript
 {
@@ -46,9 +45,9 @@ On receiving `contractDetails`, the broker extracts three fields and caches them
 }
 ```
 
-If the position already exists in the local map, it is immediately re-enriched and a portfolio update is emitted so the UI reflects the new data.
+If the position already exists in the projection, it is immediately enriched and a portfolio update is emitted so the UI reflects the new data.
 
-### 2. Market Hours Calculator (`src/broker/ibkr/marketHours.ts`)
+### 2. Market Hours Calculator (`src/broker/ibkr/market-hours/resolveMarketHours.ts`)
 
 A pure, side-effect-free module that determines whether a market is open or closed at a given point in time.
 
@@ -170,8 +169,11 @@ These entries help diagnose cases where market hours data is missing or incorrec
 
 | Test file | Tests | What it covers |
 |-----------|-------|----------------|
-| `src/broker/ibkr/marketHours.test.ts` | 7 | US equity open/close, Tokyo timezone, EST alias with DST, v970+ format, null/unknown edge cases |
+| `src/broker/ibkr/market-hours/resolveMarketHours.test.ts` | 7 | US equity open/close, Tokyo timezone, EST alias with DST, v970+ format, null/unknown edge cases |
 | `src/broker/ibkr/IBKRBroker.test.ts` | 1 (of 15) | Contract details request, cache, and position enrichment |
+| `src/broker/ibkr/portfolio/contractDetailsTracker.test.ts` | 1 | Request dedup per conId |
+| `src/broker/ibkr/portfolio/portfolioProjection.test.ts` | 1 | Position + cash → totalEquity computation |
+| `src/broker/ibkr/portfolio/createPortfolioSubscription.test.ts` | 1 | Subscribe/unsubscribe account updates |
 | `src/tui/PortfolioView.test.tsx` | 2 (of 12) | Countdown rendering for single market and multi-market (NY open + Tokyo closed) |
 
 All market hours tests inject `nowMs` explicitly, making them deterministic and independent of wall-clock time.
@@ -180,10 +182,14 @@ All market hours tests inject `nowMs` explicitly, making them deterministic and 
 
 | File | Role |
 |------|------|
-| `src/broker/ibkr/marketHours.ts` | Pure market hours calculator and IB hours parser |
-| `src/broker/ibkr/marketHours.test.ts` | Market hours calculator tests |
+| `src/broker/ibkr/market-hours/resolveMarketHours.ts` | Pure market hours calculator and IB hours parser |
+| `src/broker/ibkr/market-hours/index.ts` | Barrel export for market-hours module |
+| `src/broker/ibkr/portfolio/contractDetailsTracker.ts` | Request dedup and correlation for `reqContractDetails` |
+| `src/broker/ibkr/portfolio/portfolioProjection.ts` | Pure portfolio state container with market hours attachment |
+| `src/broker/ibkr/portfolio/createPortfolioSubscription.ts` | Event wiring orchestration between IB API and projection/tracker |
+| `src/broker/ibkr/portfolio/types.ts` | IBKR portfolio module types |
 | `src/broker/types.ts` | `PositionMarketHours` type (canonical) and `Position.marketHours` field |
-| `src/broker/ibkr/IBKRBroker.ts` | Contract details enrichment in `subscribePortfolio()` |
+| `src/broker/ibkr/IBKRBroker.ts` | Thin adapter delegating to `createPortfolioSubscription` |
 | `src/tui/PortfolioView.tsx` | `Mkt Hrs` column rendering with color |
 
 ## Design Decisions

@@ -3,7 +3,7 @@ import { useStore } from "./store.js";
 import type { PortfolioUpdate } from "../broker/types.js";
 import { log } from "../utils/logger.js";
 
-vi.mock("../broker/ibkr/IBKRBroker.js", () => {
+vi.mock("../broker/ibkr/index.js", () => {
   return {
     IBKRBroker: vi.fn().mockImplementation(() => ({
       connect: vi.fn().mockResolvedValue(undefined),

@@ -2,7 +2,7 @@ import React, { useEffect, useState } from "react";
 import { Box, Text } from "ink";
 import { useStore } from "../state/store.js";
 import type { Position } from "../broker/types.js";
-import { resolveMarketHours, formatMarketHoursCountdown } from "../broker/ibkr/marketHours.js";
+import { resolveMarketHours, formatMarketHoursCountdown } from "../broker/ibkr/market-hours/index.js";
 
 const STALE_THRESHOLD_MS = 180_000;
 
