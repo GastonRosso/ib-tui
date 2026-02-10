@@ -59,10 +59,11 @@ export class IBKRBroker implements Broker {
 
   async connect(config: ConnectionConfig = DEFAULT_CONFIG): Promise<void> {
     log("info", "connection", `connect host=${config.host} port=${config.port} clientId=${config.clientId}`);
-    this.api = new IBApi({
+    const api = new IBApi({
       host: config.host,
       port: config.port,
     });
+    this.api = api;
     this.setupEventHandlers();
 
     return new Promise((resolve, reject) => {
@@ -70,12 +71,12 @@ export class IBKRBroker implements Broker {
         reject(new Error("Connection timeout"));
       }, 10000);
 
-      this.api!.once(EventName.nextValidId, () => {
+      api.once(EventName.nextValidId, () => {
         clearTimeout(timeout);
         resolve();
       });
 
-      this.api!.connect(config.clientId);
+      api.connect(config.clientId);
     });
   }
 

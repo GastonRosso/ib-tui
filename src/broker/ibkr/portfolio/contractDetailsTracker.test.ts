@@ -35,13 +35,15 @@ describe("createContractDetailsTracker", () => {
 
     expect(tracker.getCachedMarketHours(265598)).toBeUndefined();
 
-    tracker.onContractDetails(req!.reqId, {
+    expect(req).toBeDefined();
+    if (!req) throw new Error("expected request");
+    tracker.onContractDetails(req.reqId, {
       contract: { conId: 265598 },
       timeZoneId: "America/New_York",
       liquidHours: "20260210:0930-1600",
       tradingHours: "20260210:0400-2000",
     });
-    tracker.onContractDetailsEnd(req!.reqId);
+    tracker.onContractDetailsEnd(req.reqId);
 
     const cached = tracker.getCachedMarketHours(265598);
     expect(cached).toEqual({

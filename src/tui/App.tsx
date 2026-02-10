@@ -9,10 +9,10 @@ export const App: React.FC = () => {
 
   useInput((input, key) => {
     if (input === "q" || (key.ctrl && input === "c")) {
-      disconnect().finally(() => exit());
+      void disconnect().finally(() => exit());
     }
     if (input === "c" && (connectionStatus === "disconnected" || connectionStatus === "error")) {
-      connect();
+      void connect();
     }
   });
 

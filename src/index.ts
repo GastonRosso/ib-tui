@@ -61,6 +61,6 @@ if (logFileArg) {
 
 const { waitUntilExit } = render(React.createElement(App));
 
-waitUntilExit().then(() => {
+void waitUntilExit().then(() => {
   process.exit(0);
 });
