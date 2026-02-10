@@ -55,7 +55,9 @@ describe("IBKRBroker", () => {
 
     beforeEach(async () => {
       const connectPromise = broker.connect({ host: "127.0.0.1", port: 4002, clientId: 1 });
-      mockApi = (broker as unknown as { api: typeof mockApi }).api;
+      const maybeApi = Reflect.get(broker, "api");
+      if (!maybeApi) throw new Error("Expected api to be initialized after connect()");
+      mockApi = maybeApi;
       mockApi.emit(EventName.nextValidId, 1);
       await connectPromise;
       mockApi.emit(EventName.managedAccounts, "DU123456");

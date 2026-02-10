@@ -134,7 +134,7 @@ export class IBKRBroker implements Broker {
       throw new Error("Not connected");
     }
     return createPortfolioSubscription({
-      api: this.api as never,
+      api: this.api,
       accountId: () => this.accountId,
       callback,
       log,

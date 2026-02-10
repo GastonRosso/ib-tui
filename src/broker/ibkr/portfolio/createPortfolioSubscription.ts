@@ -5,11 +5,11 @@ import { createContractDetailsTracker } from "./contractDetailsTracker.js";
 
 type ApiLike = {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  on: (event: string, handler: (...args: any[]) => void) => void;
+  on(event: string, handler: (...args: any[]) => void): void;
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  removeListener: (event: string, handler: (...args: any[]) => void) => void;
-  reqAccountUpdates: (subscribe: boolean, accountId: string) => void;
-  reqContractDetails: (reqId: number, contract: unknown) => void;
+  removeListener(event: string, handler: (...args: any[]) => void): void;
+  reqAccountUpdates(subscribe: boolean, accountId: string): void;
+  reqContractDetails(reqId: number, contract: unknown): void;
 };
 
 type LogFn = (level: "error" | "warn" | "info" | "debug", stream: string, detail: string) => void;

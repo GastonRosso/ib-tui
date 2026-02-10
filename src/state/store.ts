@@ -5,7 +5,7 @@ import { log } from "../utils/logger.js";
 
 type ConnectionStatus = "disconnected" | "connecting" | "connected" | "error";
 
-type AppState = {
+export type AppState = {
   broker: Broker;
   connectionStatus: ConnectionStatus;
   error: string | null;

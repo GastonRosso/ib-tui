@@ -7,6 +7,8 @@ import type { LogLevel } from "./utils/logger.js";
 
 const VALID_LEVELS: LogLevel[] = ["error", "warn", "info", "debug"];
 const args = process.argv.slice(2);
+const isLogLevel = (value: string): value is LogLevel =>
+  value === "error" || value === "warn" || value === "info" || value === "debug";
 
 const hasLegacyFlags = args.some(
   (arg) => arg === "--debug-streams" || arg.startsWith("--debug-streams-file")
@@ -47,11 +49,11 @@ if (logFileArg) {
   let level: LogLevel = "info";
   if (logLevelArg) {
     const raw = logLevelArg.slice("--log-level=".length).toLowerCase();
-    if (!VALID_LEVELS.includes(raw as LogLevel)) {
+    if (!isLogLevel(raw)) {
       process.stderr.write(`Invalid --log-level="${raw}". Valid values: ${VALID_LEVELS.join(", ")}\n`);
       process.exit(1);
     }
-    level = raw as LogLevel;
+    level = raw;
   }
 
   configureLogging({ filePath: logFile, level });

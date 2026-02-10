@@ -3,6 +3,8 @@ import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { render } from "ink-testing-library";
 import { PortfolioView } from "./PortfolioView.js";
 import { useStore } from "../state/store.js";
+import type { AppState } from "../state/store.js";
+import type { Broker } from "../broker/types.js";
 import type { Position } from "../broker/types.js";
 
 const mockUnsubscribe = vi.fn();
@@ -29,6 +31,43 @@ describe("PortfolioView", () => {
     ...overrides,
   });
 
+  const createMockBroker = (): Broker => ({
+    connect: async () => undefined,
+    disconnect: async () => undefined,
+    isConnected: () => true,
+    onDisconnect: () => () => {},
+    getAccountSummary: async () => ({
+      accountId: "DU123456",
+      netLiquidation: 0,
+      totalCashValue: 0,
+      buyingPower: 0,
+      positions: [],
+    }),
+    getPositions: async () => [],
+    placeOrder: async (order) => ({ ...order, id: 1, status: "Submitted" }),
+    cancelOrder: async () => undefined,
+    getOpenOrders: async () => [],
+    subscribeQuote: () => () => {},
+    subscribePortfolio: () => () => {},
+  });
+
+  const createBaseState = (): AppState => ({
+    broker: createMockBroker(),
+    connectionStatus: "connected",
+    error: null,
+    positions: [],
+    positionsMarketValue: 0,
+    totalEquity: 0,
+    cashBalance: 0,
+    initialLoadComplete: true,
+    lastPortfolioUpdateAt: Date.now(),
+    connect: async () => undefined,
+    disconnect: async () => undefined,
+    setConnectionStatus: () => {},
+    setError: () => {},
+    subscribePortfolio: mockSubscribe,
+  });
+
   beforeEach(() => {
     vi.clearAllMocks();
     mockUnsubscribe.mockClear();
@@ -41,15 +80,16 @@ describe("PortfolioView", () => {
 
   it("renders loading state when no positions", () => {
     mockUseStore.mockImplementation((selector) => {
-      const state = {
-        positions: [] as Position[],
+      const state: AppState = {
+        ...createBaseState(),
+        positions: [],
         totalEquity: 0,
         cashBalance: 0,
         subscribePortfolio: mockSubscribe,
         initialLoadComplete: false,
         lastPortfolioUpdateAt: null,
       };
-      return selector ? selector(state as never) : state;
+      return selector ? selector(state) : state;
     });
 
     const { lastFrame } = render(<PortfolioView />);
@@ -60,7 +100,8 @@ describe("PortfolioView", () => {
 
   it("renders position rows correctly", () => {
     mockUseStore.mockImplementation((selector) => {
-      const state = {
+      const state: AppState = {
+        ...createBaseState(),
         positions: [createMockPosition()],
         totalEquity: 15050,
         cashBalance: 0,
@@ -68,7 +109,7 @@ describe("PortfolioView", () => {
         initialLoadComplete: true,
         lastPortfolioUpdateAt: Date.now(),
       };
-      return selector ? selector(state as never) : state;
+      return selector ? selector(state) : state;
     });
 
     const { lastFrame } = render(<PortfolioView />);
@@ -82,7 +123,8 @@ describe("PortfolioView", () => {
 
   it("renders header row without Day P&L columns", () => {
     mockUseStore.mockImplementation((selector) => {
-      const state = {
+      const state: AppState = {
+        ...createBaseState(),
         positions: [createMockPosition()],
         totalEquity: 15050,
         cashBalance: 0,
@@ -90,7 +132,7 @@ describe("PortfolioView", () => {
         initialLoadComplete: true,
         lastPortfolioUpdateAt: Date.now(),
       };
-      return selector ? selector(state as never) : state;
+      return selector ? selector(state) : state;
     });
 
     const { lastFrame } = render(<PortfolioView />);
@@ -109,7 +151,8 @@ describe("PortfolioView", () => {
 
   it("renders summary row with totals", () => {
     mockUseStore.mockImplementation((selector) => {
-      const state = {
+      const state: AppState = {
+        ...createBaseState(),
         positions: [createMockPosition()],
         totalEquity: 15050,
         cashBalance: 0,
@@ -117,7 +160,7 @@ describe("PortfolioView", () => {
         initialLoadComplete: true,
         lastPortfolioUpdateAt: Date.now(),
       };
-      return selector ? selector(state as never) : state;
+      return selector ? selector(state) : state;
     });
 
     const { lastFrame } = render(<PortfolioView />);
@@ -129,7 +172,8 @@ describe("PortfolioView", () => {
 
   it("calculates portfolio percentage correctly", () => {
     mockUseStore.mockImplementation((selector) => {
-      const state = {
+      const state: AppState = {
+        ...createBaseState(),
         positions: [
           createMockPosition({ conId: 1, symbol: "AAPL", marketValue: 7500 }),
           createMockPosition({ conId: 2, symbol: "MSFT", marketValue: 2500 }),
@@ -140,7 +184,7 @@ describe("PortfolioView", () => {
         initialLoadComplete: true,
         lastPortfolioUpdateAt: Date.now(),
       };
-      return selector ? selector(state as never) : state;
+      return selector ? selector(state) : state;
     });
 
     const { lastFrame } = render(<PortfolioView />);
@@ -152,7 +196,8 @@ describe("PortfolioView", () => {
 
   it("renders multiple positions", () => {
     mockUseStore.mockImplementation((selector) => {
-      const state = {
+      const state: AppState = {
+        ...createBaseState(),
         positions: [
           createMockPosition({ conId: 1, symbol: "AAPL" }),
           createMockPosition({ conId: 2, symbol: "MSFT" }),
@@ -164,7 +209,7 @@ describe("PortfolioView", () => {
         initialLoadComplete: true,
         lastPortfolioUpdateAt: Date.now(),
       };
-      return selector ? selector(state as never) : state;
+      return selector ? selector(state) : state;
     });
 
     const { lastFrame } = render(<PortfolioView />);
@@ -177,7 +222,8 @@ describe("PortfolioView", () => {
 
   it("handles negative unrealized P&L values", () => {
     mockUseStore.mockImplementation((selector) => {
-      const state = {
+      const state: AppState = {
+        ...createBaseState(),
         positions: [
           createMockPosition({
             unrealizedPnL: -500,
@@ -189,7 +235,7 @@ describe("PortfolioView", () => {
         initialLoadComplete: true,
         lastPortfolioUpdateAt: Date.now(),
       };
-      return selector ? selector(state as never) : state;
+      return selector ? selector(state) : state;
     });
 
     const { lastFrame } = render(<PortfolioView />);
@@ -200,7 +246,8 @@ describe("PortfolioView", () => {
 
   it("handles positive unrealized P&L values", () => {
     mockUseStore.mockImplementation((selector) => {
-      const state = {
+      const state: AppState = {
+        ...createBaseState(),
         positions: [
           createMockPosition({
             unrealizedPnL: 1000,
@@ -212,7 +259,7 @@ describe("PortfolioView", () => {
         initialLoadComplete: true,
         lastPortfolioUpdateAt: Date.now(),
       };
-      return selector ? selector(state as never) : state;
+      return selector ? selector(state) : state;
     });
 
     const { lastFrame } = render(<PortfolioView />);
@@ -226,7 +273,8 @@ describe("PortfolioView", () => {
     vi.spyOn(Date, "now").mockReturnValue(now);
 
     mockUseStore.mockImplementation((selector) => {
-      const state = {
+      const state: AppState = {
+        ...createBaseState(),
         positions: [createMockPosition()],
         totalEquity: 15050,
         cashBalance: 0,
@@ -234,7 +282,7 @@ describe("PortfolioView", () => {
         initialLoadComplete: true,
         lastPortfolioUpdateAt: now - 5000,
       };
-      return selector ? selector(state as never) : state;
+      return selector ? selector(state) : state;
     });
 
     const { lastFrame } = render(<PortfolioView />);
@@ -247,7 +295,8 @@ describe("PortfolioView", () => {
   it("renders colored countdown to close when market is open", () => {
     vi.spyOn(Date, "now").mockReturnValue(Date.parse("2026-02-10T15:00:00.000Z"));
     mockUseStore.mockImplementation((selector) => {
-      const state = {
+      const state: AppState = {
+        ...createBaseState(),
         positions: [
           createMockPosition({
             marketHours: {
@@ -263,7 +312,7 @@ describe("PortfolioView", () => {
         initialLoadComplete: true,
         lastPortfolioUpdateAt: Date.now(),
       };
-      return selector ? selector(state as never) : state;
+      return selector ? selector(state) : state;
     });
 
     const { lastFrame } = render(<PortfolioView />);
@@ -275,7 +324,8 @@ describe("PortfolioView", () => {
     // 2026-02-10T15:00:00Z = 10:00 NY (market open) = 00:00+1 Tokyo (market closed)
     vi.spyOn(Date, "now").mockReturnValue(Date.parse("2026-02-10T15:00:00.000Z"));
     mockUseStore.mockImplementation((selector) => {
-      const state = {
+      const state: AppState = {
+        ...createBaseState(),
         positions: [
           createMockPosition({
             conId: 1,
@@ -302,7 +352,7 @@ describe("PortfolioView", () => {
         initialLoadComplete: true,
         lastPortfolioUpdateAt: Date.now(),
       };
-      return selector ? selector(state as never) : state;
+      return selector ? selector(state) : state;
     });
 
     const { lastFrame } = render(<PortfolioView />);
@@ -313,7 +363,8 @@ describe("PortfolioView", () => {
 
   it("does not render MarketValueChart", () => {
     mockUseStore.mockImplementation((selector) => {
-      const state = {
+      const state: AppState = {
+        ...createBaseState(),
         positions: [createMockPosition()],
         totalEquity: 15050,
         cashBalance: 0,
@@ -321,7 +372,7 @@ describe("PortfolioView", () => {
         initialLoadComplete: true,
         lastPortfolioUpdateAt: Date.now(),
       };
-      return selector ? selector(state as never) : state;
+      return selector ? selector(state) : state;
     });
 
     const { lastFrame } = render(<PortfolioView />);
