@@ -6,7 +6,9 @@ import { PortfolioView } from "./PortfolioView.js";
 
 export const App: React.FC = () => {
   const { exit } = useApp();
-  const { connectionStatus, connect, disconnect } = useStore();
+  const connectionStatus = useStore((s) => s.connectionStatus);
+  const connect = useStore((s) => s.connect);
+  const disconnect = useStore((s) => s.disconnect);
 
   useInput((input, key) => {
     if (input === "q" || (key.ctrl && input === "c")) {
@@ -46,7 +48,8 @@ const StatusIndicator: React.FC<{ status: ConnectionStatus }> = ({ status }) => 
 };
 
 const MainView: React.FC = () => {
-  const { connectionStatus, error } = useStore();
+  const connectionStatus = useStore((s) => s.connectionStatus);
+  const error = useStore((s) => s.error);
 
   if (connectionStatus !== "connected") {
     return (

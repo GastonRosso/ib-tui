@@ -155,14 +155,12 @@ const RecencyIndicator: React.FC<{ lastUpdateAt: number | null }> = ({ lastUpdat
 };
 
 export const PortfolioView: React.FC = () => {
-  const {
-    positions,
-    totalEquity,
-    cashBalance,
-    subscribePortfolio,
-    initialLoadComplete,
-    lastPortfolioUpdateAt,
-  } = useStore();
+  const positions = useStore((s) => s.positions);
+  const totalEquity = useStore((s) => s.totalEquity);
+  const cashBalance = useStore((s) => s.cashBalance);
+  const subscribePortfolio = useStore((s) => s.subscribePortfolio);
+  const initialLoadComplete = useStore((s) => s.initialLoadComplete);
+  const lastPortfolioUpdateAt = useStore((s) => s.lastPortfolioUpdateAt);
 
   const [nowMs, setNowMs] = useState(Date.now());
 
