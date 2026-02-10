@@ -29,7 +29,7 @@ Invalid level values cause a startup error.
 | `error` | IBKR API errors, connection failures |
 | `warn` | Reserved for future use |
 | `info` | App lifecycle: connect request, disconnect request, subscription start/stop |
-| `debug` | Broker callback/event data: `connected`, `disconnected`, `managedAccounts`, `nextValidId`, `updatePortfolio`, `accountValue`, `accountDownloadEnd`, and `emit` |
+| `debug` | Broker callback/event data plus state snapshots: `connected`, `disconnected`, `managedAccounts`, `nextValidId`, `updatePortfolio`, `accountValue`, `accountDownloadEnd`, and `state.snapshot` |
 
 At `info` level you see high-level lifecycle milestones. At `debug` level you get full event traces useful for diagnosing data issues.
 
@@ -71,9 +71,9 @@ The replay test (`src/utils/streamLogReplay.test.ts`) re-processes a captured lo
 
 ### What it checks
 
-1. `positionsMV` in each emit matches the sum of replayed position market values.
-2. `cash` in each emit matches the last replayed `TotalCashBalance`.
-3. `totalEquity` in each emit matches `positionsMV + cash`.
+1. `positionsMV` in each `state.snapshot` matches the sum of replayed position market values.
+2. `cash` in each `state.snapshot` matches the last replayed `TotalCashBalance`.
+3. `totalEquity` in each `state.snapshot` matches `positionsMV + cash`.
 4. No `reqPnL` or `reqPnLSingle` subscriptions appear (regression guard).
 
 ### How to run
@@ -85,7 +85,7 @@ Point `IBKR_STREAM_LOG_PATH` at a log file captured with `--log-level=debug`:
 npm run dev -- --log-file=logs/ibkr.log --log-level=debug
 
 # 2. Run the replay test against the captured log
-IBKR_STREAM_LOG_PATH=logs/ibkr.log npm test -- --grep "stream log replay"
+IBKR_STREAM_LOG_PATH=logs/ibkr.log npm test -- -t "stream log replay"
 ```
 
 Without `IBKR_STREAM_LOG_PATH` set, the test is silently skipped.
