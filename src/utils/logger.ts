@@ -1,7 +1,8 @@
 import fs from "node:fs";
 import path from "node:path";
 
-export type LogLevel = "error" | "warn" | "info" | "debug";
+export const LOG_LEVELS = ["error", "warn", "info", "debug"] as const;
+export type LogLevel = (typeof LOG_LEVELS)[number];
 
 const LEVEL_ORDER: Record<LogLevel, number> = {
   error: 0,

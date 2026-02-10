@@ -1,6 +1,7 @@
 import React, { useEffect } from "react";
 import { Box, Text, useApp, useInput } from "ink";
 import { useStore } from "../state/store.js";
+import type { ConnectionStatus } from "../state/types.js";
 import { PortfolioView } from "./PortfolioView.js";
 
 export const App: React.FC = () => {
@@ -39,7 +40,7 @@ export const App: React.FC = () => {
   );
 };
 
-const StatusIndicator: React.FC<{ status: string }> = ({ status }) => {
+const StatusIndicator: React.FC<{ status: ConnectionStatus }> = ({ status }) => {
   const color = status === "connected" ? "green" : status === "connecting" ? "yellow" : "red";
   return <Text color={color}>● {status}</Text>;
 };

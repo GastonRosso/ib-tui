@@ -3,8 +3,9 @@ import type { PortfolioUpdate } from "../../types.js";
 import { createPortfolioProjection } from "./portfolioProjection.js";
 import { createContractDetailsTracker } from "./contractDetailsTracker.js";
 import type { PortfolioApi, PortfolioContractSeed, ContractDetailsPayload } from "./types.js";
+import type { LogLevel } from "../../../utils/logger.js";
 
-type LogFn = (level: "error" | "warn" | "info" | "debug", stream: string, detail: string) => void;
+type LogFn = (level: LogLevel, stream: string, detail: string) => void;
 
 const noop: LogFn = () => {};
 

@@ -2,13 +2,14 @@
 import { render } from "ink";
 import React from "react";
 import { App } from "./tui/App.js";
-import { configureLogging } from "./utils/logger.js";
+import { configureLogging, LOG_LEVELS } from "./utils/logger.js";
 import type { LogLevel } from "./utils/logger.js";
 
-const VALID_LEVELS: LogLevel[] = ["error", "warn", "info", "debug"];
+const VALID_LEVELS = [...LOG_LEVELS];
+const VALID_LEVEL_SET: ReadonlySet<string> = new Set(LOG_LEVELS);
 const args = process.argv.slice(2);
 const isLogLevel = (value: string): value is LogLevel =>
-  value === "error" || value === "warn" || value === "info" || value === "debug";
+  VALID_LEVEL_SET.has(value);
 
 const hasLegacyFlags = args.some(
   (arg) => arg === "--debug-streams" || arg.startsWith("--debug-streams-file")
