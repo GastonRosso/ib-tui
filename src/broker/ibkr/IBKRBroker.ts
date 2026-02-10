@@ -4,6 +4,7 @@ import type {
   ConnectionConfig,
   AccountSummary,
   Position,
+  PositionMarketHours,
   Order,
   Quote,
   PortfolioUpdate,
@@ -135,6 +136,10 @@ export class IBKRBroker implements Broker {
 
     const api = this.api;
     const positions = new Map<number, Position>();
+    const marketHoursByConId = new Map<number, PositionMarketHours>();
+    const reqIdToConId = new Map<number, number>();
+    const pendingConIds = new Set<number>();
+    let nextContractDetailsReqId = 90_000;
     let positionsMarketValue = 0;
     let cashBalance = 0;
     let initialLoadComplete = false;
@@ -156,6 +161,45 @@ export class IBKRBroker implements Broker {
         initialLoadComplete,
         lastPortfolioUpdateAt,
       });
+    };
+
+    const requestContractDetailsIfNeeded = (contract: Contract, conId: number) => {
+      if (marketHoursByConId.has(conId) || pendingConIds.has(conId)) return;
+      const reqId = nextContractDetailsReqId++;
+      pendingConIds.add(conId);
+      reqIdToConId.set(reqId, conId);
+      log("debug", "event.reqContractDetails", `reqId=${reqId} conId=${conId} sym=${contract.symbol ?? ""}`);
+      api.reqContractDetails(reqId, {
+        conId,
+        symbol: contract.symbol,
+        currency: contract.currency,
+        exchange: contract.exchange ?? "SMART",
+        secType: contract.secType,
+      });
+    };
+
+    const onContractDetails = (reqId: number, details: { contract?: { conId?: number }; timeZoneId?: string; liquidHours?: string; tradingHours?: string }) => {
+      const conId = reqIdToConId.get(reqId) ?? details.contract?.conId;
+      log("debug", "event.contractDetails", `reqId=${reqId} conId=${conId ?? "n/a"} tz=${details.timeZoneId ?? "n/a"} liquid=${(details.liquidHours ?? "n/a").slice(0, 60)} trading=${(details.tradingHours ?? "n/a").slice(0, 60)}`);
+      if (!conId) return;
+
+      marketHoursByConId.set(conId, {
+        timeZoneId: details.timeZoneId ?? null,
+        liquidHours: details.liquidHours ?? null,
+        tradingHours: details.tradingHours ?? null,
+      });
+
+      const existing = positions.get(conId);
+      if (existing) {
+        positions.set(conId, { ...existing, marketHours: marketHoursByConId.get(conId) });
+        emitUpdate();
+      }
+    };
+
+    const onContractDetailsEnd = (reqId: number) => {
+      const conId = reqIdToConId.get(reqId);
+      if (conId) pendingConIds.delete(conId);
+      reqIdToConId.delete(reqId);
     };
 
     const onPortfolioUpdate = (
@@ -196,12 +240,14 @@ export class IBKRBroker implements Broker {
         marketPrice,
         currency: contract.currency ?? "USD",
         conId,
+        marketHours: marketHoursByConId.get(conId),
       };
 
       if (pos === 0) {
         positions.delete(conId);
       } else {
         positions.set(conId, position);
+        requestContractDetailsIfNeeded(contract, conId);
       }
 
       positionsMarketValue = Array.from(positions.values()).reduce(
@@ -247,6 +293,8 @@ export class IBKRBroker implements Broker {
     api.on(EventName.updatePortfolio, onPortfolioUpdate);
     api.on(EventName.updateAccountValue, onAccountValue);
     api.on(EventName.accountDownloadEnd, onAccountDownloadEnd);
+    api.on(EventName.contractDetails, onContractDetails);
+    api.on(EventName.contractDetailsEnd, onContractDetailsEnd);
 
     log("info", "subscription", `reqAccountUpdates start account=${this.accountId}`);
     api.reqAccountUpdates(true, this.accountId);
@@ -255,6 +303,8 @@ export class IBKRBroker implements Broker {
       api.removeListener(EventName.updatePortfolio, onPortfolioUpdate);
       api.removeListener(EventName.updateAccountValue, onAccountValue);
       api.removeListener(EventName.accountDownloadEnd, onAccountDownloadEnd);
+      api.removeListener(EventName.contractDetails, onContractDetails);
+      api.removeListener(EventName.contractDetailsEnd, onContractDetailsEnd);
 
       log("info", "subscription", `reqAccountUpdates stop account=${this.accountId}`);
       api.reqAccountUpdates(false, this.accountId);

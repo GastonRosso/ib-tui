@@ -63,6 +63,19 @@ Used for:
 - Setting `initialLoadComplete = true`.
 - UI only renders the portfolio table after this flag is true.
 
+### `contractDetails` / `contractDetailsEnd` (from `reqContractDetails`)
+
+Consumed event payload:
+- `contract.conId`
+- `timeZoneId` (e.g. `"EST"`, `"America/New_York"`)
+- `liquidHours` (e.g. `"20260210:0930-1600;20260211:0930-1600"`)
+- `tradingHours` (e.g. `"20260210:0400-2000;20260211:0400-2000"`)
+
+Used for:
+- Enriching each position with `marketHours` metadata (timezone, liquid hours, trading hours).
+- Requested once per conId on first portfolio update; cached and not re-requested.
+- IB timezone abbreviations (EST, JST, etc.) are normalized to IANA identifiers before use.
+
 ## 3) Data Ownership (Single Source of Truth)
 
 1. `updatePortfolio` owns:
@@ -117,6 +130,8 @@ Broker event streams use `event.*` naming:
 - `event.updatePortfolio`: conId, symbol, qty, mktPrice, mktValue
 - `event.accountValue`: TotalCashBalance updates
 - `event.accountDownloadEnd`: account name
+- `event.reqContractDetails`: reqId, conId, symbol (outgoing request)
+- `event.contractDetails`: reqId, conId, timezone (incoming response)
 
 State snapshots use `state.snapshot` (emitted by the store when broker updates are applied):
 - `state.snapshot`: summary (positionsMV, cash, totalEquity)

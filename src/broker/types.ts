@@ -4,6 +4,12 @@ export type ConnectionConfig = {
   clientId: number;
 };
 
+export type PositionMarketHours = {
+  timeZoneId: string | null;
+  liquidHours: string | null;
+  tradingHours: string | null;
+};
+
 export type Position = {
   symbol: string;
   quantity: number;
@@ -15,6 +21,7 @@ export type Position = {
   marketPrice: number;
   currency: string;
   conId: number;
+  marketHours?: PositionMarketHours;
 };
 
 export type AccountSummary = {

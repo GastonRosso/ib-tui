@@ -17,6 +17,8 @@ vi.mock("@stoqey/ib", async () => {
     updatePortfolio: "updatePortfolio",
     updateAccountValue: "updateAccountValue",
     accountDownloadEnd: "accountDownloadEnd",
+    contractDetails: "contractDetails",
+    contractDetailsEnd: "contractDetailsEnd",
   };
 
   class MockIBApiClass extends events.EventEmitter {
@@ -24,6 +26,7 @@ vi.mock("@stoqey/ib", async () => {
     disconnect = vi.fn();
     cancelOrder = vi.fn();
     reqAccountUpdates = vi.fn();
+    reqContractDetails = vi.fn();
   }
 
   return {
@@ -47,6 +50,7 @@ describe("IBKRBroker", () => {
   describe("subscribePortfolio", () => {
     let mockApi: EventEmitter & {
       reqAccountUpdates: ReturnType<typeof vi.fn>;
+      reqContractDetails: ReturnType<typeof vi.fn>;
     };
 
     beforeEach(async () => {
@@ -367,6 +371,35 @@ describe("IBKRBroker", () => {
       const lastCall = callback.mock.calls[callback.mock.calls.length - 1][0];
       expect(lastCall.lastPortfolioUpdateAt).toBe(8000);
       nowSpy.mockRestore();
+    });
+
+    it("requests contract details and enriches positions with marketHours", () => {
+      const callback = vi.fn();
+      broker.subscribePortfolio(callback);
+
+      mockApi.emit(
+        EventName.updatePortfolio,
+        { symbol: "AAPL", conId: 265598, currency: "USD", exchange: "SMART", secType: "STK" },
+        100, 150.5, 15050, 145.0, 550, 0, "DU123456"
+      );
+
+      expect(mockApi.reqContractDetails).toHaveBeenCalledTimes(1);
+      const [reqId] = mockApi.reqContractDetails.mock.calls[0];
+
+      mockApi.emit(EventName.contractDetails, reqId, {
+        contract: { conId: 265598 },
+        timeZoneId: "America/New_York",
+        liquidHours: "20260210:0930-1600;20260211:0930-1600",
+        tradingHours: "20260210:0400-2000;20260211:0400-2000",
+      });
+      mockApi.emit(EventName.contractDetailsEnd, reqId);
+
+      const lastCall = callback.mock.calls.at(-1)?.[0];
+      expect(lastCall.positions[0].marketHours).toEqual({
+        timeZoneId: "America/New_York",
+        liquidHours: "20260210:0930-1600;20260211:0930-1600",
+        tradingHours: "20260210:0400-2000;20260211:0400-2000",
+      });
     });
 
     it("computes correct positionsMarketValue across multiple positions", () => {

@@ -2,16 +2,18 @@ import React, { useEffect, useState } from "react";
 import { Box, Text } from "ink";
 import { useStore } from "../state/store.js";
 import type { Position } from "../broker/types.js";
+import { resolveMarketHours, formatMarketHoursCountdown } from "../broker/ibkr/marketHours.js";
 
 const STALE_THRESHOLD_MS = 180_000;
 
 const COLUMNS = {
   ticker: 8,
-  quantity: 10,
-  price: 12,
-  avgCost: 12,
-  unrealizedPnL: 14,
-  portfolioPct: 10,
+  quantity: 8,
+  price: 10,
+  avgCost: 10,
+  unrealizedPnL: 12,
+  portfolioPct: 8,
+  nextTransition: 17,
   marketValue: 14,
 };
 
@@ -56,16 +58,21 @@ const HeaderRow: React.FC = () => (
       {padLeft("Avg Cost", COLUMNS.avgCost)}
       {padLeft("Unrealized", COLUMNS.unrealizedPnL)}
       {padLeft("% Port", COLUMNS.portfolioPct)}
+      {padLeft("Mkt Hrs", COLUMNS.nextTransition)}
       {padLeft("Mkt Value", COLUMNS.marketValue)}
     </Text>
   </Box>
 );
 
-const PositionRow: React.FC<{ position: Position; totalValue: number }> = ({
+const PositionRow: React.FC<{ position: Position; totalValue: number; nowMs: number }> = ({
   position,
   totalValue,
+  nowMs,
 }) => {
   const portfolioPct = totalValue > 0 ? (position.marketValue / totalValue) * 100 : 0;
+  const mktHrs = resolveMarketHours(position.marketHours, nowMs);
+  const countdownColor = mktHrs.status === "open" ? "green" : mktHrs.status === "closed" ? "yellow" : undefined;
+  const nextLabel = formatMarketHoursCountdown(mktHrs);
 
   return (
     <Box>
@@ -77,6 +84,7 @@ const PositionRow: React.FC<{ position: Position; totalValue: number }> = ({
         <PnLText value={position.unrealizedPnL} />
       </Box>
       <Text>{padLeft(formatNumber(portfolioPct, 1) + "%", COLUMNS.portfolioPct)}</Text>
+      <Text color={countdownColor}>{padLeft(nextLabel, COLUMNS.nextTransition)}</Text>
       <Text>{padLeft(formatCurrency(position.marketValue), COLUMNS.marketValue)}</Text>
     </Box>
   );
@@ -96,6 +104,7 @@ const CashRow: React.FC<{ cashBalance: number; totalValue: number }> = ({
       <Text>{padLeft("", COLUMNS.avgCost)}</Text>
       <Text>{padLeft("", COLUMNS.unrealizedPnL)}</Text>
       <Text>{padLeft(formatNumber(portfolioPct, 1) + "%", COLUMNS.portfolioPct)}</Text>
+      <Text>{padLeft("", COLUMNS.nextTransition)}</Text>
       <Text>{padLeft(formatCurrency(cashBalance), COLUMNS.marketValue)}</Text>
     </Box>
   );
@@ -119,6 +128,7 @@ const SummaryRow: React.FC<{
         </Text>
       </Box>
       <Text>{padLeft("100.0%", COLUMNS.portfolioPct)}</Text>
+      <Text>{padLeft("", COLUMNS.nextTransition)}</Text>
       <Text bold>{padLeft(formatCurrency(totalValue), COLUMNS.marketValue)}</Text>
     </Box>
   );
@@ -154,6 +164,13 @@ export const PortfolioView: React.FC = () => {
     lastPortfolioUpdateAt,
   } = useStore();
 
+  const [nowMs, setNowMs] = useState(Date.now());
+
+  useEffect(() => {
+    const interval = setInterval(() => setNowMs(Date.now()), 30_000);
+    return () => clearInterval(interval);
+  }, []);
+
   useEffect(() => {
     const unsubscribe = subscribePortfolio();
     return () => unsubscribe();
@@ -187,6 +204,7 @@ export const PortfolioView: React.FC = () => {
           key={position.conId}
           position={position}
           totalValue={totalEquity}
+          nowMs={nowMs}
         />
       ))}
       <CashRow cashBalance={cashBalance} totalValue={totalEquity} />

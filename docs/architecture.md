@@ -10,7 +10,8 @@ src/
 ├── broker/               # Broker abstraction layer
 │   ├── types.ts          # Interfaces and types
 │   └── ibkr/
-│       └── IBKRBroker.ts # IBKR implementation
+│       ├── IBKRBroker.ts # IBKR implementation
+│       └── marketHours.ts # Market hours calculator (pure utility)
 ├── utils/
 │   └── logger.ts         # File-only logger with level filtering
 ├── state/
@@ -65,12 +66,17 @@ The `subscribePortfolio()` method uses a single IBKR subscription:
 | `reqAccountUpdates` | `updatePortfolio` | symbol, avgCost, currency, conId, quantity, marketPrice, marketValue | On portfolio/account updates |
 | `reqAccountUpdates` | `updateAccountValue` | cashBalance (`TotalCashBalance`, `BASE`) | On changes |
 | `reqAccountUpdates` | `accountDownloadEnd` | initial load complete flag | End of initial snapshot |
+| `reqContractDetails` | `contractDetails` | timeZoneId, liquidHours, tradingHours | Once per conId |
 
 Single source of truth: `updatePortfolio` owns position data and valuation, `updateAccountValue` owns cash balance, `accountDownloadEnd` owns initial load completion.
 
 **Cadence:**
 - Updates are event-driven, typically arriving on portfolio changes rather than at a fixed interval.
 - This is slower than the previous multi-stream model (~1s from `pnlSingle`) but eliminates cross-stream drift and merge complexity.
+
+**Market Hours (`src/broker/ibkr/marketHours.ts`):**
+
+Pure utility that determines whether a market is open or closed at a given time, using IB's `liquidHours`/`tradingHours` schedule strings and timezone metadata from `reqContractDetails`. Supports both legacy and TWS v970+ hour formats, normalizes 14 IB timezone abbreviations to IANA identifiers, and is fully deterministic (injectable `nowMs`). See [`docs/features/market-hours.md`](features/market-hours.md) for full documentation.
 
 ### 3. State Management (`src/state/store.ts`)
 
@@ -109,6 +115,7 @@ The store also emits `state.snapshot` debug logs after applying portfolio update
 - Subscribes to portfolio updates on mount
 - Fixed-width column table layout
 - Color-coded unrealized P&L (green positive, red negative)
+- Per-position `Mkt Hrs` column: color-coded countdown (green=open, yellow=closed) to next session transition
 - Shows positions, cash, and totals
 - Recency indicator ("Updated X ago") with stale detection at 3 minutes
 
@@ -124,10 +131,11 @@ The store also emits `state.snapshot` debug logs after applying portfolio update
 ┌─────────────────────────────────────────────────────────────┐
 │                    IBKRBroker                               │
 │                                                             │
-│  Subscription:                                              │
+│  Subscriptions:                                             │
 │  └─ reqAccountUpdates → updatePortfolio (positions + values)│
 │                       → updateAccountValue (cash balance)   │
 │                       → accountDownloadEnd (load complete)  │
+│  └─ reqContractDetails → contractDetails (market hours)     │
 │                                                             │
 │  Consolidates into PortfolioUpdate callback                 │
 └─────────────────────────┬───────────────────────────────────┘
@@ -165,6 +173,7 @@ type Position = {
   marketPrice: number
   currency: string
   conId: number
+  marketHours?: PositionMarketHours
 }
 ```
 

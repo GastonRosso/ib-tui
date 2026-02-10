@@ -244,6 +244,73 @@ describe("PortfolioView", () => {
     expect(frame).toContain("ago");
   });
 
+  it("renders colored countdown to close when market is open", () => {
+    vi.spyOn(Date, "now").mockReturnValue(Date.parse("2026-02-10T15:00:00.000Z"));
+    mockUseStore.mockImplementation((selector) => {
+      const state = {
+        positions: [
+          createMockPosition({
+            marketHours: {
+              timeZoneId: "America/New_York",
+              liquidHours: "20260210:0930-1600;20260211:0930-1600",
+              tradingHours: null,
+            },
+          }),
+        ],
+        totalEquity: 15050,
+        cashBalance: 0,
+        subscribePortfolio: mockSubscribe,
+        initialLoadComplete: true,
+        lastPortfolioUpdateAt: Date.now(),
+      };
+      return selector ? selector(state as never) : state;
+    });
+
+    const { lastFrame } = render(<PortfolioView />);
+    const frame = lastFrame();
+    expect(frame).toContain("6h 0m to close");
+  });
+
+  it("renders different countdowns for different asset markets at same UTC time", () => {
+    // 2026-02-10T15:00:00Z = 10:00 NY (market open) = 00:00+1 Tokyo (market closed)
+    vi.spyOn(Date, "now").mockReturnValue(Date.parse("2026-02-10T15:00:00.000Z"));
+    mockUseStore.mockImplementation((selector) => {
+      const state = {
+        positions: [
+          createMockPosition({
+            conId: 1,
+            symbol: "AAPL",
+            marketHours: {
+              timeZoneId: "America/New_York",
+              liquidHours: "20260210:0930-1600;20260211:0930-1600",
+              tradingHours: null,
+            },
+          }),
+          createMockPosition({
+            conId: 2,
+            symbol: "7203",
+            marketHours: {
+              timeZoneId: "Asia/Tokyo",
+              liquidHours: "20260210:0900-1500;20260211:0900-1500",
+              tradingHours: null,
+            },
+          }),
+        ],
+        totalEquity: 30100,
+        cashBalance: 0,
+        subscribePortfolio: mockSubscribe,
+        initialLoadComplete: true,
+        lastPortfolioUpdateAt: Date.now(),
+      };
+      return selector ? selector(state as never) : state;
+    });
+
+    const { lastFrame } = render(<PortfolioView />);
+    const frame = lastFrame();
+    expect(frame).toContain("6h 0m to close");
+    expect(frame).toContain("9h 0m to open");
+  });
+
   it("does not render MarketValueChart", () => {
     mockUseStore.mockImplementation((selector) => {
       const state = {
