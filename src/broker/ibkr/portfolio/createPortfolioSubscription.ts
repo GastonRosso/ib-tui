@@ -325,10 +325,6 @@ export const createPortfolioSubscription = ({ api, accountId: accountIdOrFn, cal
     }
 
     if (key === "ExchangeRate") {
-      if (liveFxRateCurrencies.has(currency)) {
-        log("debug", "event.accountValue", `ignored stale ExchangeRate for ${currency}; live FX active`);
-        return;
-      }
       projection.applyExchangeRate(currency, value);
     } else {
       projection.applyCashBalance(currency, value);
