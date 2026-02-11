@@ -12,6 +12,7 @@ const FX_REQ_ID_START = 700_000;
 const CONTRACT_DETAILS_TIMEOUT_MS = 20_000;
 const FX_INITIAL_TICK_TIMEOUT_MS = 20_000;
 const FX_RATE_TIMEOUT_MS = 20_000;
+const FX_STALE_RECOVERY_MS = 60_000;
 const WATCHDOG_INTERVAL_MS = 5_000;
 const TICK_BID = 1;
 const TICK_ASK = 2;
@@ -42,6 +43,7 @@ type FxRequestState = {
   baseCurrency: string;
   requestedAtMs: number;
   lastTickAtMs: number | null;
+  lastRateAtMs: number | null;
   lastWarnAtMs: number | null;
   sawAnyTick: boolean;
   sawRate: boolean;
@@ -104,6 +106,7 @@ export const createPortfolioSubscription = ({ api, accountId: accountIdOrFn, cal
       baseCurrency: baseCurrencyCode,
       requestedAtMs: now(),
       lastTickAtMs: null,
+      lastRateAtMs: null,
       lastWarnAtMs: null,
       sawAnyTick: false,
       sawRate: false,
@@ -130,6 +133,26 @@ export const createPortfolioSubscription = ({ api, accountId: accountIdOrFn, cal
     for (const currency of positionCurrencies) {
       ensureFxSubscription(currency);
     }
+  };
+
+  const resubscribeFx = (currency: string): void => {
+    const oldReqId = fxReqIdByCurrency.get(currency);
+    if (oldReqId !== undefined) {
+      log("info", "subscription.fx", `cancelMktData for recovery reqId=${oldReqId} currency=${currency}`);
+      try {
+        api.cancelMktData(oldReqId);
+      } catch (error) {
+        const message = error instanceof Error ? error.message : String(error);
+        log("warn", "subscription.fx", `cancelMktData failed reqId=${oldReqId} currency=${currency} error=${message}`);
+      }
+      fxReqIdByCurrency.delete(currency);
+      fxCurrencyByReqId.delete(oldReqId);
+      fxQuoteByReqId.delete(oldReqId);
+      fxRequestStateByReqId.delete(oldReqId);
+      liveFxRateCurrencies.delete(currency);
+      lastAppliedFxRateByCurrency.delete(currency);
+    }
+    ensureFxSubscription(currency);
   };
 
   const updateBaseCurrencyCode = (key: string, currency: string): void => {
@@ -167,6 +190,7 @@ export const createPortfolioSubscription = ({ api, accountId: accountIdOrFn, cal
 
   const runWatchdog = (): void => {
     const currentMs = now();
+    const fxRecoveryQueue: string[] = [];
 
     for (const [reqId, state] of pendingContractDetailsByReqId.entries()) {
       if (state.sawDetails || state.sawError) continue;
@@ -203,6 +227,23 @@ export const createPortfolioSubscription = ({ api, accountId: accountIdOrFn, cal
           `ticks without rate reqId=${reqId} pair=${state.currency}.${state.baseCurrency} ageMs=${ageMs} sinceLastTickMs=${sinceLastTickMs}`
         );
       }
+
+      // Recovery: if we had a live rate but it has gone stale, resubscribe
+      if (state.sawRate && state.lastRateAtMs !== null) {
+        const sinceLastRateMs = currentMs - state.lastRateAtMs;
+        if (sinceLastRateMs >= FX_STALE_RECOVERY_MS) {
+          log(
+            "warn",
+            "watchdog.fx",
+            `stale rate recovery reqId=${reqId} pair=${state.currency}.${state.baseCurrency} sinceLastRateMs=${sinceLastRateMs} — resubscribing`
+          );
+          fxRecoveryQueue.push(state.currency);
+        }
+      }
+    }
+
+    for (const currency of fxRecoveryQueue) {
+      resubscribeFx(currency);
     }
   };
 
@@ -326,7 +367,10 @@ export const createPortfolioSubscription = ({ api, accountId: accountIdOrFn, cal
 
     lastAppliedFxRateByCurrency.set(currency, nextRate);
     liveFxRateCurrencies.add(currency);
-    if (fxState) fxState.sawRate = true;
+    if (fxState) {
+      fxState.sawRate = true;
+      fxState.lastRateAtMs = now();
+    }
     projection.applyExchangeRate(currency, String(nextRate));
     log(
       "debug",

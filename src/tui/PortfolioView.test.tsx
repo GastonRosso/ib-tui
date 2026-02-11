@@ -244,7 +244,7 @@ describe("PortfolioView", () => {
     const { lastFrame } = render(<PortfolioView />);
     const frame = lastFrame() ?? "";
 
-    expect(frame).toContain("TOTAL");
+    expect(frame).toContain("Total");
     expect(frame).toContain("100.0%");
   });
 
@@ -484,11 +484,11 @@ describe("PortfolioView", () => {
     const frame = lastFrame() ?? "";
 
     expect(frame).toContain("Cash");
-    expect(frame).toContain("Curr");
+    expect(frame).toContain("CCY");
     expect(frame).toContain("FX Rate");
-    expect(frame).toContain("PORT TOT");
-    expect(frame).toContain("CASH TOT");
-    expect(frame).toContain("TOTAL");
+    expect(frame).toContain("Pos Tot");
+    expect(frame).toContain("Cash Tot");
+    expect(frame).toContain("Total");
     expect(frame).toContain("EUR");
     expect(frame).toContain("USD");
     expect(frame).toContain("1.2000");
@@ -584,13 +584,13 @@ describe("PortfolioView", () => {
     const frame = lastFrame() ?? "";
 
     // Position market value: 15050 * (1/1.1) = 13681.818...
-    expect(frame).toContain("$13,681.82");
+    expect(frame).toContain("€13,681.82");
     // Total equity: 20050 * (1/1.1) = 18227.272...
-    expect(frame).toContain("$18,227.27");
+    expect(frame).toContain("€18,227.27");
     // Cash: 5000 * (1/1.1) = 4545.454...
-    expect(frame).toContain("$4,545.45");
+    expect(frame).toContain("€4,545.45");
     // Unrealized PnL: 550 * (1/1.1) = 500.00
-    expect(frame).toContain("$500.00");
+    expect(frame).toContain("€500.00");
     // Display currency label should show EUR
     expect(frame).toContain("Display:");
     expect(frame).toContain("EUR");

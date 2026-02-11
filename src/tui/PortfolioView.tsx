@@ -25,13 +25,40 @@ const formatNumber = (value: number, decimals = 2): string => {
   });
 };
 
-const formatCurrency = (value: number): string => {
-  return `$${formatNumber(value)}`;
+const CURRENCY_SYMBOLS: Record<string, string> = {
+  USD: "$",
+  EUR: "€",
+  GBP: "£",
+  JPY: "¥",
+  CNY: "¥",
+  CNH: "¥",
+  CHF: "CHF ",
+  CAD: "C$",
+  AUD: "A$",
+  HKD: "HK$",
+  SGD: "S$",
+  SEK: "kr",
+  NOK: "kr",
+  DKK: "kr",
+  ILS: "₪",
+  MXN: "MX$",
+  KRW: "₩",
+  INR: "₹",
+  ZAR: "R",
 };
 
-const PnLText: React.FC<{ value: number }> = ({ value }) => {
+const getCurrencySymbol = (currencyCode: string | null): string => {
+  if (!currencyCode) return "$";
+  return CURRENCY_SYMBOLS[currencyCode] ?? `${currencyCode} `;
+};
+
+const formatMoney = (value: number, currencyCode: string | null): string => {
+  return `${getCurrencySymbol(currencyCode)}${formatNumber(value)}`;
+};
+
+const PnLText: React.FC<{ value: number; currencyCode: string | null }> = ({ value, currencyCode }) => {
   const color = value > 0 ? "green" : value < 0 ? "red" : undefined;
-  return <Text color={color}>{formatCurrency(value)}</Text>;
+  return <Text color={color}>{formatMoney(value, currencyCode)}</Text>;
 };
 
 const padRight = (str: string, width: number): string => {
@@ -75,7 +102,7 @@ const DividerRow: React.FC = () => (
 const CashHeaderRow: React.FC = () => (
   <Box>
     <Text color="cyan" bold>
-      {padRight("Curr", COLUMNS.ticker)}
+      {padRight("CCY", COLUMNS.ticker)}
       {padRight("", COLUMNS.ccy)}
       {padLeft("", COLUMNS.quantity)}
       {padLeft("", COLUMNS.price)}
@@ -88,12 +115,13 @@ const CashHeaderRow: React.FC = () => (
   </Box>
 );
 
-const PositionRow: React.FC<{ position: Position; totalValue: number; nowMs: number; baseCurrencyCode: string | null; displayFxRate: number }> = ({
+const PositionRow: React.FC<{ position: Position; totalValue: number; nowMs: number; baseCurrencyCode: string | null; displayFxRate: number; displayCurrencyCode: string | null }> = ({
   position,
   totalValue,
   nowMs,
   baseCurrencyCode,
   displayFxRate,
+  displayCurrencyCode,
 }) => {
   const isNonBase = baseCurrencyCode !== null && position.currency !== baseCurrencyCode;
   const isPending = position.isFxPending;
@@ -113,14 +141,14 @@ const PositionRow: React.FC<{ position: Position; totalValue: number; nowMs: num
       <Text>{padRight(position.symbol, COLUMNS.ticker)}</Text>
       <Text color={ccyColor}>{padRight(position.currency, COLUMNS.ccy)}</Text>
       <Text>{padLeft(formatNumber(position.quantity, 0), COLUMNS.quantity)}</Text>
-      <Text>{padLeft(formatCurrency(position.marketPrice), COLUMNS.price)}</Text>
-      <Text>{padLeft(formatCurrency(position.avgCost), COLUMNS.avgCost)}</Text>
+      <Text>{padLeft(formatMoney(position.marketPrice, position.currency), COLUMNS.price)}</Text>
+      <Text>{padLeft(formatMoney(position.avgCost, position.currency), COLUMNS.avgCost)}</Text>
       <Box width={COLUMNS.unrealizedPnL} justifyContent="flex-end">
-        <PnLText value={displayUnrealizedPnL} />
+        <PnLText value={displayUnrealizedPnL} currencyCode={displayCurrencyCode} />
       </Box>
       <Text>{padLeft(portfolioPct !== null ? formatNumber(portfolioPct, 1) + "%" : "", COLUMNS.portfolioPct)}</Text>
       <Text color={countdownColor}>{padLeft(nextLabel, COLUMNS.nextTransition)}</Text>
-      <Text>{padLeft(isPending ? "pending" : formatCurrency(displayMarketValue ?? 0), COLUMNS.marketValue)}</Text>
+      <Text>{padLeft(isPending ? "pending" : formatMoney(displayMarketValue ?? 0, displayCurrencyCode), COLUMNS.marketValue)}</Text>
     </Box>
   );
 };
@@ -167,11 +195,13 @@ const deriveCashHoldings = (
 const CashRow: React.FC<{
   holding: CashHolding;
   displayFxRate: number;
+  displayCurrencyCode: string | null;
 }> = ({
   holding,
   displayFxRate,
+  displayCurrencyCode,
 }) => {
-  const displayValue = formatCurrency(holding.value * displayFxRate);
+  const displayValue = formatMoney(holding.value * displayFxRate, displayCurrencyCode);
   const fxRateLabel = holding.isBaseCurrency
     ? ""
     : holding.fxRate === null
@@ -198,8 +228,9 @@ const SummaryRow: React.FC<{
   totalValue: number;
   unrealizedPnL: number | null;
   portfolioPct: number | null;
+  currencyCode: string | null;
   marginTop?: number;
-}> = ({ label, totalValue, unrealizedPnL, portfolioPct, marginTop = 1 }) => {
+}> = ({ label, totalValue, unrealizedPnL, portfolioPct, currencyCode, marginTop = 1 }) => {
   return (
     <Box marginTop={marginTop}>
       <Text bold>{padRight(label, COLUMNS.ticker)}</Text>
@@ -212,13 +243,13 @@ const SummaryRow: React.FC<{
           <Text>{padLeft("", COLUMNS.unrealizedPnL)}</Text>
         ) : (
           <Text bold>
-            <PnLText value={unrealizedPnL} />
+            <PnLText value={unrealizedPnL} currencyCode={currencyCode} />
           </Text>
         )}
       </Box>
       <Text>{padLeft(portfolioPct === null ? "" : `${formatNumber(portfolioPct, 1)}%`, COLUMNS.portfolioPct)}</Text>
       <Text>{padLeft("", COLUMNS.nextTransition)}</Text>
-      <Text bold>{padLeft(formatCurrency(totalValue), COLUMNS.marketValue)}</Text>
+      <Text bold>{padLeft(formatMoney(totalValue, currencyCode), COLUMNS.marketValue)}</Text>
     </Box>
   );
 };
@@ -349,14 +380,16 @@ export const PortfolioView: React.FC = () => {
           nowMs={nowMs}
           baseCurrencyCode={baseCurrencyCode}
           displayFxRate={displayFxRate}
+          displayCurrencyCode={displayCurrencyCode}
         />
       ))}
       <DividerRow />
       <SummaryRow
-        label="PORT TOT"
+        label="Pos Tot"
         totalValue={displayPositionsMV}
         unrealizedPnL={displayPositionsPnL}
         portfolioPct={positionsPortfolioPct}
+        currencyCode={displayCurrencyCode}
         marginTop={0}
       />
       {cashHoldings.length > 0 && (
@@ -374,23 +407,26 @@ export const PortfolioView: React.FC = () => {
               key={holding.label}
               holding={holding}
               displayFxRate={displayFxRate}
+              displayCurrencyCode={displayCurrencyCode}
             />
           ))}
           <DividerRow />
           <SummaryRow
-            label="CASH TOT"
+            label="Cash Tot"
             totalValue={displayCashBalance}
             unrealizedPnL={null}
             portfolioPct={null}
+            currencyCode={displayCurrencyCode}
             marginTop={0}
           />
         </>
       )}
       <SummaryRow
-        label="TOTAL"
+        label="Total"
         totalValue={displayTotalEquity}
         unrealizedPnL={null}
         portfolioPct={null}
+        currencyCode={displayCurrencyCode}
         marginTop={0}
       />
     </Box>
