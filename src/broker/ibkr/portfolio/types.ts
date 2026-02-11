@@ -90,6 +90,7 @@ export type PortfolioProjection = {
 export type PortfolioState = {
   positions: Map<number, Position>;
   positionsMarketValue: number;
+  positionsUnrealizedPnL: number;
   cashBalance: number;
   cashBalancesByCurrency: Map<string, number>;
   localCashBalancesByCurrency: Map<string, number>;
@@ -98,4 +99,6 @@ export type PortfolioState = {
   hasBaseCashBalance: boolean;
   initialLoadComplete: boolean;
   lastPortfolioUpdateAt: number;
+  positionsPendingFxCount: number;
+  positionsPendingFxByCurrency: Map<string, number>;
 };

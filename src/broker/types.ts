@@ -22,6 +22,10 @@ export type Position = {
   currency: string;
   conId: number;
   marketHours?: PositionMarketHours;
+  marketValueBase: number | null;
+  unrealizedPnLBase: number | null;
+  fxRateToBase: number | null;
+  isFxPending: boolean;
 };
 
 export type AccountSummary = {
@@ -62,6 +66,7 @@ export type Quote = {
 export type PortfolioUpdate = {
   positions: Position[];
   positionsMarketValue: number;
+  positionsUnrealizedPnL: number;
   totalEquity: number;
   cashBalance: number;
   cashBalancesByCurrency: Record<string, number>;
@@ -69,6 +74,8 @@ export type PortfolioUpdate = {
   baseCurrencyCode: string | null;
   initialLoadComplete: boolean;
   lastPortfolioUpdateAt: number;
+  positionsPendingFxCount: number;
+  positionsPendingFxByCurrency: Record<string, number>;
 };
 
 export type BrokerStatusLevel = "info" | "warn" | "error";

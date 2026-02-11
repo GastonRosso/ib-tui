@@ -61,6 +61,7 @@ export const createPortfolioSubscription = ({ api, accountId: accountIdOrFn, cal
   const tracker = createContractDetailsTracker();
   const liveFxEnabled = process.env.IBKR_DISABLE_LIVE_FX !== "1";
   const localCashCurrencies = new Set<string>();
+  const positionCurrencies = new Set<string>();
   const fxReqIdByCurrency = new Map<string, number>();
   const fxCurrencyByReqId = new Map<number, string>();
   const fxQuoteByReqId = new Map<number, FxQuoteState>();
@@ -124,6 +125,9 @@ export const createPortfolioSubscription = ({ api, accountId: accountIdOrFn, cal
 
   const ensureFxSubscriptions = (): void => {
     for (const currency of localCashCurrencies) {
+      ensureFxSubscription(currency);
+    }
+    for (const currency of positionCurrencies) {
       ensureFxSubscription(currency);
     }
   };
@@ -226,6 +230,10 @@ export const createPortfolioSubscription = ({ api, accountId: accountIdOrFn, cal
       return;
     }
     projection.applyPortfolioUpdate({ contract, pos, marketPrice, marketValue, avgCost, unrealizedPnL, realizedPnL });
+    if (pos !== 0 && contract.currency && contract.currency !== "BASE") {
+      positionCurrencies.add(contract.currency);
+      if (initialAccountDownloadComplete) ensureFxSubscription(contract.currency);
+    }
     if (pos !== 0 && contract.conId != null) {
       const cached = tracker.getCachedMarketHours(contract.conId);
       if (cached) projection.attachMarketHours(contract.conId, cached);

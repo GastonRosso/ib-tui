@@ -25,9 +25,14 @@ vi.mock("../broker/ibkr/index.js", () => {
               marketPrice: 150.5,
               currency: "USD",
               conId: 265598,
+              marketValueBase: 15050,
+              unrealizedPnLBase: 550,
+              fxRateToBase: 1,
+              isFxPending: false,
             },
           ],
           positionsMarketValue: 15050,
+          positionsUnrealizedPnL: 550,
           totalEquity: 20050,
           cashBalance: 5000,
           cashBalancesByCurrency: { USD: 5000 },
@@ -35,6 +40,8 @@ vi.mock("../broker/ibkr/index.js", () => {
           baseCurrencyCode: "USD",
           initialLoadComplete: true,
           lastPortfolioUpdateAt: 1000,
+          positionsPendingFxCount: 0,
+          positionsPendingFxByCurrency: {},
         });
         return vi.fn();
       }),
@@ -55,6 +62,7 @@ describe("store", () => {
       brokerStatus: null,
       positions: [],
       positionsMarketValue: 0,
+      positionsUnrealizedPnL: 0,
       totalEquity: 0,
       cashBalance: 0,
       cashBalancesByCurrency: {},
@@ -62,6 +70,12 @@ describe("store", () => {
       baseCurrencyCode: null,
       initialLoadComplete: false,
       lastPortfolioUpdateAt: null,
+      positionsPendingFxCount: 0,
+      positionsPendingFxByCurrency: {},
+      displayCurrencyPreference: "BASE",
+      displayCurrencyCode: null,
+      availableDisplayCurrencies: [],
+      displayCurrencyWarning: null,
     });
   });
 
@@ -142,6 +156,69 @@ describe("store", () => {
 
       expect(log).toHaveBeenCalledTimes(1);
     });
+
+    it("derives available display currencies from portfolio update", () => {
+      const { subscribePortfolio } = useStore.getState();
+      subscribePortfolio();
+
+      const state = useStore.getState();
+      expect(state.availableDisplayCurrencies).toEqual(["USD"]);
+    });
+
+    it("resolves display currency to base when preference is BASE", () => {
+      const { subscribePortfolio } = useStore.getState();
+      subscribePortfolio();
+
+      const state = useStore.getState();
+      expect(state.displayCurrencyCode).toBe("USD");
+      expect(state.displayCurrencyWarning).toBeNull();
+    });
+  });
+
+  describe("cycleDisplayCurrency", () => {
+    it("cycles deterministically through available currencies", () => {
+      useStore.setState({
+        baseCurrencyCode: "USD",
+        availableDisplayCurrencies: ["EUR", "GBP", "USD"],
+        displayCurrencyCode: "USD",
+        displayCurrencyPreference: "BASE",
+        cashExchangeRatesByCurrency: { EUR: 1.1, GBP: 1.3, USD: 1 },
+      });
+
+      const { cycleDisplayCurrency } = useStore.getState();
+
+      // USD -> EUR (next, wraps because USD is at index 2)
+      cycleDisplayCurrency("next");
+      expect(useStore.getState().displayCurrencyCode).toBe("EUR");
+
+      // EUR -> GBP
+      cycleDisplayCurrency("next");
+      expect(useStore.getState().displayCurrencyCode).toBe("GBP");
+
+      // GBP -> USD
+      cycleDisplayCurrency("next");
+      expect(useStore.getState().displayCurrencyCode).toBe("USD");
+
+      // USD -> GBP (prev)
+      cycleDisplayCurrency("prev");
+      expect(useStore.getState().displayCurrencyCode).toBe("GBP");
+    });
+
+    it("falls back to base when preferred currency is not convertible", () => {
+      useStore.setState({
+        baseCurrencyCode: "USD",
+        availableDisplayCurrencies: ["EUR", "USD"],
+        displayCurrencyCode: "USD",
+        displayCurrencyPreference: "BASE",
+        cashExchangeRatesByCurrency: { USD: 1 },
+      });
+
+      // Set preference to EUR directly — but no EUR FX rate available
+      useStore.getState().setDisplayCurrencyPreference("EUR");
+      const state = useStore.getState();
+      expect(state.displayCurrencyCode).toBe("USD");
+      expect(state.displayCurrencyWarning).toContain("EUR");
+    });
   });
 
   describe("disconnect", () => {
@@ -161,6 +238,8 @@ describe("store", () => {
       expect(state.baseCurrencyCode).toBeNull();
       expect(state.lastPortfolioUpdateAt).toBeNull();
       expect(state.connectionStatus).toBe("disconnected");
+      expect(state.displayCurrencyCode).toBeNull();
+      expect(state.availableDisplayCurrencies).toEqual([]);
     });
   });
 

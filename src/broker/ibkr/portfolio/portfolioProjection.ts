@@ -1,9 +1,6 @@
 import type { Position, PositionMarketHours, PortfolioUpdate } from "../../types.js";
 import type { PortfolioProjection, PortfolioState, PortfolioUpdateEvent } from "./types.js";
 
-const recomputeMarketValue = (positions: Map<number, Position>): number =>
-  Array.from(positions.values()).reduce((sum, p) => sum + p.marketValue, 0);
-
 const toCashBalancesByCurrency = (balances: Map<string, number>): Record<string, number> =>
   Array.from(balances.entries())
     .sort(([a], [b]) => a.localeCompare(b))
@@ -60,10 +57,66 @@ const recomputeCashBalancesInBase = (state: PortfolioState): void => {
   }
 };
 
+const recomputePositionBaseValues = (state: PortfolioState): void => {
+  let positionsMarketValue = 0;
+  let positionsUnrealizedPnL = 0;
+  let pendingFxCount = 0;
+  const pendingFxByCurrency = new Map<string, number>();
+
+  for (const [conId, position] of state.positions.entries()) {
+    const currency = position.currency;
+    let fxRate: number | null;
+    let isFxPending: boolean;
+
+    if (!state.baseCurrencyCode || currency === state.baseCurrencyCode) {
+      fxRate = 1;
+      isFxPending = false;
+    } else {
+      const rate = state.exchangeRatesByCurrency.get(currency);
+      if (rate !== undefined) {
+        fxRate = rate;
+        isFxPending = false;
+      } else {
+        fxRate = null;
+        isFxPending = true;
+      }
+    }
+
+    const marketValueBase = fxRate !== null ? position.marketValue * fxRate : null;
+    const unrealizedPnLBase = fxRate !== null ? position.unrealizedPnL * fxRate : null;
+
+    state.positions.set(conId, {
+      ...position,
+      marketValueBase,
+      unrealizedPnLBase,
+      fxRateToBase: fxRate,
+      isFxPending,
+    });
+
+    if (marketValueBase !== null) {
+      positionsMarketValue += marketValueBase;
+    } else {
+      pendingFxCount++;
+      const existing = pendingFxByCurrency.get(currency) ?? 0;
+      pendingFxByCurrency.set(currency, existing + Math.abs(position.marketValue));
+    }
+
+    if (unrealizedPnLBase !== null) {
+      positionsUnrealizedPnL += unrealizedPnLBase;
+    }
+  }
+
+  state.positionsMarketValue = positionsMarketValue;
+  state.positionsUnrealizedPnL = positionsUnrealizedPnL;
+  state.positionsPendingFxCount = pendingFxCount;
+  state.positionsPendingFxByCurrency = pendingFxByCurrency;
+};
+
 export const createPortfolioProjection = (now = () => Date.now()): PortfolioProjection => {
   const state: PortfolioState = {
     positions: new Map<number, Position>(),
     positionsMarketValue: 0,
+    positionsUnrealizedPnL: 0,
     cashBalance: 0,
     cashBalancesByCurrency: new Map<string, number>(),
     localCashBalancesByCurrency: new Map<string, number>(),
@@ -72,11 +125,22 @@ export const createPortfolioProjection = (now = () => Date.now()): PortfolioProj
     hasBaseCashBalance: false,
     initialLoadComplete: false,
     lastPortfolioUpdateAt: now(),
+    positionsPendingFxCount: 0,
+    positionsPendingFxByCurrency: new Map<string, number>(),
   };
+
+  const toPendingFxByCurrency = (pending: Map<string, number>): Record<string, number> =>
+    Array.from(pending.entries())
+      .sort(([a], [b]) => a.localeCompare(b))
+      .reduce<Record<string, number>>((acc, [currency, value]) => {
+        acc[currency] = value;
+        return acc;
+      }, {});
 
   const snapshot = (): PortfolioUpdate => ({
     positions: Array.from(state.positions.values()),
     positionsMarketValue: state.positionsMarketValue,
+    positionsUnrealizedPnL: state.positionsUnrealizedPnL,
     cashBalance: state.cashBalance,
     cashBalancesByCurrency: toCashBalancesByCurrency(state.cashBalancesByCurrency),
     cashExchangeRatesByCurrency: toExchangeRatesByCurrency(state.exchangeRatesByCurrency),
@@ -84,6 +148,8 @@ export const createPortfolioProjection = (now = () => Date.now()): PortfolioProj
     totalEquity: state.positionsMarketValue + state.cashBalance,
     initialLoadComplete: state.initialLoadComplete,
     lastPortfolioUpdateAt: state.lastPortfolioUpdateAt,
+    positionsPendingFxCount: state.positionsPendingFxCount,
+    positionsPendingFxByCurrency: toPendingFxByCurrency(state.positionsPendingFxByCurrency),
   });
 
   const applyPortfolioUpdate = (event: PortfolioUpdateEvent): void => {
@@ -105,9 +171,13 @@ export const createPortfolioProjection = (now = () => Date.now()): PortfolioProj
         currency: event.contract.currency ?? "USD",
         conId,
         marketHours: existing?.marketHours,
+        marketValueBase: null,
+        unrealizedPnLBase: null,
+        fxRateToBase: null,
+        isFxPending: false,
       });
     }
-    state.positionsMarketValue = recomputeMarketValue(state.positions);
+    recomputePositionBaseValues(state);
     state.lastPortfolioUpdateAt = now();
   };
 
@@ -132,6 +202,7 @@ export const createPortfolioProjection = (now = () => Date.now()): PortfolioProj
     if (!currency || !Number.isFinite(parsed)) return;
     state.exchangeRatesByCurrency.set(currency, parsed);
     recomputeCashBalancesInBase(state);
+    recomputePositionBaseValues(state);
     state.lastPortfolioUpdateAt = now();
   };
 
@@ -140,6 +211,7 @@ export const createPortfolioProjection = (now = () => Date.now()): PortfolioProj
     if (state.baseCurrencyCode === currency) return;
     state.baseCurrencyCode = currency;
     recomputeCashBalancesInBase(state);
+    recomputePositionBaseValues(state);
     state.lastPortfolioUpdateAt = now();
   };
 

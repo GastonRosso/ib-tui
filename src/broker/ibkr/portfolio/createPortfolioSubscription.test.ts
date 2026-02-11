@@ -112,6 +112,65 @@ describe("createPortfolioSubscription", () => {
     });
   });
 
+  it("subscribes to FX for non-base position currency after account download", () => {
+    const api = createMockApi();
+    const callback = vi.fn();
+
+    createPortfolioSubscription({
+      api,
+      accountId: "DU123456",
+      callback,
+    });
+
+    // Detect base currency
+    api.emit("updateAccountValue", "TotalCashValue", "1000", "USD", "DU123456");
+
+    // Position in EUR (non-base)
+    api.emit(
+      "updatePortfolio",
+      { symbol: "SAP", conId: 100, currency: "EUR", exchange: "SMART", secType: "STK" },
+      50, 200.0, 10000, 180.0, 1000, 0, "DU123456"
+    );
+
+    // Before accountDownloadEnd — no FX subscriptions yet
+    expect(api.reqMktData).toHaveBeenCalledTimes(0);
+
+    api.emit("accountDownloadEnd", "DU123456");
+
+    // After accountDownloadEnd — FX subscription for EUR
+    expect(api.reqMktData).toHaveBeenCalledTimes(1);
+    const call = api.reqMktData.mock.calls[0];
+    expect(call[1]).toMatchObject({ symbol: "EUR", currency: "USD", exchange: "IDEALPRO", secType: "CASH" });
+  });
+
+  it("creates only one FX subscription for currency shared by cash and position", () => {
+    const api = createMockApi();
+    const callback = vi.fn();
+
+    createPortfolioSubscription({
+      api,
+      accountId: "DU123456",
+      callback,
+    });
+
+    api.emit("updateAccountValue", "TotalCashValue", "1000", "USD", "DU123456");
+
+    // EUR cash balance
+    api.emit("updateAccountValue", "TotalCashBalance", "500", "EUR", "DU123456");
+
+    // EUR position
+    api.emit(
+      "updatePortfolio",
+      { symbol: "SAP", conId: 100, currency: "EUR", exchange: "SMART", secType: "STK" },
+      50, 200.0, 10000, 180.0, 1000, 0, "DU123456"
+    );
+
+    api.emit("accountDownloadEnd", "DU123456");
+
+    // Only 1 FX subscription even though EUR appears in both cash and positions
+    expect(api.reqMktData).toHaveBeenCalledTimes(1);
+  });
+
   it("subscribes to IDEALPRO FX and updates converted cash from live ticks", () => {
     const api = createMockApi();
     const callback = vi.fn();
