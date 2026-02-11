@@ -7,6 +7,7 @@ const createMockApi = () =>
     reqAccountUpdates: vi.fn(),
     reqContractDetails: vi.fn(),
     reqMktData: vi.fn(),
+    reqMarketDataType: vi.fn(),
     cancelMktData: vi.fn(),
     removeListener: EventEmitter.prototype.removeListener,
   });
@@ -185,6 +186,7 @@ describe("createPortfolioSubscription", () => {
     api.emit("updateAccountValue", "TotalCashBalance", "500", "EUR", "DU123456");
     api.emit("accountDownloadEnd", "DU123456");
 
+    expect(api.reqMarketDataType).toHaveBeenCalledWith(3);
     expect(api.reqMktData).toHaveBeenCalledTimes(1);
     const [reqId] = api.reqMktData.mock.calls[0];
 

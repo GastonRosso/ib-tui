@@ -64,6 +64,7 @@ export type PortfolioApi = {
     snapshot: boolean,
     regulatorySnapshot: boolean,
   ): void;
+  reqMarketDataType?(marketDataType: number): void;
   cancelMktData(reqId: number): void;
 };
 

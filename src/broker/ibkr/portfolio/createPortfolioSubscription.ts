@@ -22,6 +22,7 @@ const TICK_DELAYED_BID = 66;
 const TICK_DELAYED_ASK = 67;
 const TICK_DELAYED_LAST = 68;
 const TICK_DELAYED_MARK = 79;
+const MARKET_DATA_TYPE_DELAYED = 3;
 
 type FxQuoteState = {
   bid?: number;
@@ -75,6 +76,7 @@ export const createPortfolioSubscription = ({ api, accountId: accountIdOrFn, cal
   let nextFxReqId = FX_REQ_ID_START;
   let baseCurrencyCode: string | null = null;
   let initialAccountDownloadComplete = false;
+  let requestedDelayedFxMarketDataType = false;
 
   const getAccountId = typeof accountIdOrFn === "function" ? accountIdOrFn : () => accountIdOrFn;
 
@@ -116,6 +118,11 @@ export const createPortfolioSubscription = ({ api, accountId: accountIdOrFn, cal
 
     log("info", "subscription.fx", `reqMktData start reqId=${reqId} pair=${currency}.${baseCurrencyCode}`);
     try {
+      if (!requestedDelayedFxMarketDataType && api.reqMarketDataType) {
+        api.reqMarketDataType(MARKET_DATA_TYPE_DELAYED);
+        requestedDelayedFxMarketDataType = true;
+        log("info", "subscription.fx", "reqMarketDataType=3 (delayed) for FX fallback");
+      }
       api.reqMktData(reqId, contract, "", false, false);
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
