@@ -233,4 +233,53 @@ describe("createPortfolioSubscription", () => {
     const afterLiveAgain = callback.mock.calls.at(-1)?.[0];
     expect(afterLiveAgain.cashBalancesByCurrency.EUR).toBeCloseTo(600, 6);
   });
+
+  it("updates FX from delayed mark ticks", () => {
+    const api = createMockApi();
+    const callback = vi.fn();
+
+    createPortfolioSubscription({
+      api,
+      accountId: "DU123456",
+      callback,
+    });
+
+    api.emit("updateAccountValue", "TotalCashValue", "1000", "USD", "DU123456");
+    api.emit("updateAccountValue", "TotalCashBalance", "500", "EUR", "DU123456");
+    api.emit("accountDownloadEnd", "DU123456");
+
+    const [reqId] = api.reqMktData.mock.calls[0];
+    api.emit("tickPrice", reqId, 79, 1.25, true);
+
+    const lastUpdate = callback.mock.calls.at(-1)?.[0];
+    expect(lastUpdate.cashBalancesByCurrency.EUR).toBeCloseTo(625, 6);
+  });
+
+  it("prefers fresh mark ticks over stale bid/ask midpoint", () => {
+    const api = createMockApi();
+    const callback = vi.fn();
+
+    createPortfolioSubscription({
+      api,
+      accountId: "DU123456",
+      callback,
+    });
+
+    api.emit("updateAccountValue", "TotalCashValue", "1000", "USD", "DU123456");
+    api.emit("updateAccountValue", "TotalCashBalance", "500", "EUR", "DU123456");
+    api.emit("accountDownloadEnd", "DU123456");
+
+    const [reqId] = api.reqMktData.mock.calls[0];
+
+    // Initial midpoint from bid/ask => 1.2
+    api.emit("tickPrice", reqId, 1, 1.1, true);
+    api.emit("tickPrice", reqId, 2, 1.3, true);
+    const afterBidAsk = callback.mock.calls.at(-1)?.[0];
+    expect(afterBidAsk.cashBalancesByCurrency.EUR).toBeCloseTo(600, 6);
+
+    // Mark tick should move rate even if bid/ask remain unchanged.
+    api.emit("tickPrice", reqId, 37, 1.26, true);
+    const afterMark = callback.mock.calls.at(-1)?.[0];
+    expect(afterMark.cashBalancesByCurrency.EUR).toBeCloseTo(630, 6);
+  });
 });

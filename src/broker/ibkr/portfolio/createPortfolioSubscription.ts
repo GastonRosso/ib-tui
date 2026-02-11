@@ -21,6 +21,7 @@ const TICK_MARK = 37;
 const TICK_DELAYED_BID = 66;
 const TICK_DELAYED_ASK = 67;
 const TICK_DELAYED_LAST = 68;
+const TICK_DELAYED_MARK = 79;
 
 type FxQuoteState = {
   bid?: number;
@@ -171,12 +172,27 @@ export const createPortfolioSubscription = ({ api, accountId: accountIdOrFn, cal
     if (initialAccountDownloadComplete) ensureFxSubscriptions();
   };
 
-  const calculateFxRate = (quote: FxQuoteState): number | null => {
-    if (quote.bid !== undefined && quote.ask !== undefined && quote.bid > 0 && quote.ask > 0) {
-      return (quote.bid + quote.ask) / 2;
+  const calculateFxRate = (quote: FxQuoteState, tickType: number): number | null => {
+    const mid =
+      quote.bid !== undefined && quote.ask !== undefined && quote.bid > 0 && quote.ask > 0
+        ? (quote.bid + quote.ask) / 2
+        : null;
+    const mark = quote.mark !== undefined && quote.mark > 0 ? quote.mark : null;
+    const last = quote.last !== undefined && quote.last > 0 ? quote.last : null;
+
+    if ((tickType === TICK_MARK || tickType === TICK_DELAYED_MARK) && mark !== null) {
+      return mark;
     }
-    if (quote.mark !== undefined && quote.mark > 0) return quote.mark;
-    if (quote.last !== undefined && quote.last > 0) return quote.last;
+    if ((tickType === TICK_LAST || tickType === TICK_DELAYED_LAST) && last !== null) {
+      return last;
+    }
+    if ((tickType === TICK_BID || tickType === TICK_ASK || tickType === TICK_DELAYED_BID || tickType === TICK_DELAYED_ASK) && mid !== null) {
+      return mid;
+    }
+
+    if (mark !== null) return mark;
+    if (mid !== null) return mid;
+    if (last !== null) return last;
     return null;
   };
 
@@ -348,7 +364,7 @@ export const createPortfolioSubscription = ({ api, accountId: accountIdOrFn, cal
       quote.bid = price;
     } else if (tickType === TICK_ASK || tickType === TICK_DELAYED_ASK) {
       quote.ask = price;
-    } else if (tickType === TICK_MARK) {
+    } else if (tickType === TICK_MARK || tickType === TICK_DELAYED_MARK) {
       quote.mark = price;
     } else if (tickType === TICK_LAST || tickType === TICK_DELAYED_LAST) {
       quote.last = price;
@@ -359,7 +375,7 @@ export const createPortfolioSubscription = ({ api, accountId: accountIdOrFn, cal
     log("debug", "event.tickPrice.fx", `reqId=${reqId} currency=${currency} tickType=${tickType} price=${price}`);
     fxQuoteByReqId.set(reqId, quote);
 
-    const nextRate = calculateFxRate(quote);
+    const nextRate = calculateFxRate(quote, tickType);
     if (nextRate === null) return;
 
     // Track freshness even when rate hasn't changed, to avoid unnecessary stale recovery
