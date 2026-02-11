@@ -44,10 +44,11 @@ export const configureLogging = (config: LogConfig): void => {
 };
 
 export const isLoggingEnabled = (): boolean => enabled;
+export const isLogLevelEnabled = (level: LogLevel): boolean =>
+  enabled && LEVEL_ORDER[level] <= LEVEL_ORDER[minLevel];
 
 export const log = (level: LogLevel, stream: string, detail: string): void => {
-  if (!enabled) return;
-  if (LEVEL_ORDER[level] > LEVEL_ORDER[minLevel]) return;
+  if (!isLogLevelEnabled(level)) return;
   const tag = level.toUpperCase().padEnd(5);
   appendLine(`[${ts()}] ${tag} ${stream}: ${detail}`);
 };

@@ -64,6 +64,27 @@ const HeaderRow: React.FC = () => (
   </Box>
 );
 
+const DividerRow: React.FC = () => (
+  <Box borderStyle="single" borderTop borderBottom={false} borderLeft={false} borderRight={false}>
+    <Text> </Text>
+  </Box>
+);
+
+const CashHeaderRow: React.FC = () => (
+  <Box>
+    <Text color="cyan" bold>
+      {padRight("Curr", COLUMNS.ticker)}
+      {padLeft("", COLUMNS.quantity)}
+      {padLeft("", COLUMNS.price)}
+      {padLeft("", COLUMNS.avgCost)}
+      {padLeft("", COLUMNS.unrealizedPnL)}
+      {padLeft("", COLUMNS.portfolioPct)}
+      {padLeft("FX Rate", COLUMNS.nextTransition)}
+      {padLeft("Mkt Value", COLUMNS.marketValue)}
+    </Text>
+  </Box>
+);
+
 const PositionRow: React.FC<{ position: Position; totalValue: number; nowMs: number }> = ({
   position,
   totalValue,
@@ -90,44 +111,94 @@ const PositionRow: React.FC<{ position: Position; totalValue: number; nowMs: num
   );
 };
 
-const CashRow: React.FC<{ cashBalance: number; totalValue: number }> = ({
-  cashBalance,
-  totalValue,
+type CashHolding = {
+  label: string;
+  value: number;
+  fxRate: number | null;
+  isBaseCurrency: boolean;
+};
+
+const deriveCashHoldings = (
+  cashBalance: number,
+  cashBalancesByCurrency: Record<string, number>,
+  cashExchangeRatesByCurrency: Record<string, number>,
+  baseCurrencyCode: string | null,
+): CashHolding[] => {
+  const perCurrency = Object.entries(cashBalancesByCurrency)
+    .filter(([currency]) => currency && currency !== "BASE")
+    .sort(([a], [b]) => a.localeCompare(b))
+    .map(([currency, value]) => {
+      const isBaseCurrency = baseCurrencyCode !== null && currency === baseCurrencyCode;
+      return {
+        label: currency,
+        value,
+        fxRate: isBaseCurrency ? null : cashExchangeRatesByCurrency[currency] ?? null,
+        isBaseCurrency,
+      };
+    });
+
+  if (perCurrency.length > 0) return perCurrency;
+  if (cashBalance === 0) return [];
+
+  return [
+    {
+      label: baseCurrencyCode ?? "BASE",
+      value: cashBalance,
+      fxRate: null,
+      isBaseCurrency: true,
+    },
+  ];
+};
+
+const CashRow: React.FC<{
+  holding: CashHolding;
+}> = ({
+  holding,
 }) => {
-  const portfolioPct = totalValue > 0 ? (cashBalance / totalValue) * 100 : 0;
+  const displayValue = formatCurrency(holding.value);
+  const displayFxRate = holding.isBaseCurrency
+    ? ""
+    : holding.fxRate === null
+      ? "n/a"
+      : formatNumber(holding.fxRate, 4);
 
   return (
     <Box>
-      <Text dimColor>{padRight("Cash", COLUMNS.ticker)}</Text>
+      <Text dimColor>{padRight(holding.label, COLUMNS.ticker)}</Text>
       <Text>{padLeft("", COLUMNS.quantity)}</Text>
       <Text>{padLeft("", COLUMNS.price)}</Text>
       <Text>{padLeft("", COLUMNS.avgCost)}</Text>
       <Text>{padLeft("", COLUMNS.unrealizedPnL)}</Text>
-      <Text>{padLeft(formatNumber(portfolioPct, 1) + "%", COLUMNS.portfolioPct)}</Text>
-      <Text>{padLeft("", COLUMNS.nextTransition)}</Text>
-      <Text>{padLeft(formatCurrency(cashBalance), COLUMNS.marketValue)}</Text>
+      <Text>{padLeft("", COLUMNS.portfolioPct)}</Text>
+      <Text>{padLeft(displayFxRate, COLUMNS.nextTransition)}</Text>
+      <Text>{padLeft(displayValue, COLUMNS.marketValue)}</Text>
     </Box>
   );
 };
 
 const SummaryRow: React.FC<{
-  positions: Position[];
+  label: string;
   totalValue: number;
-}> = ({ positions, totalValue }) => {
-  const totalUnrealizedPnL = positions.reduce((sum, p) => sum + p.unrealizedPnL, 0);
-
+  unrealizedPnL: number | null;
+  portfolioPct: number | null;
+  marginTop?: number;
+}> = ({ label, totalValue, unrealizedPnL, portfolioPct, marginTop = 1 }) => {
   return (
-    <Box marginTop={1}>
-      <Text bold>{padRight("TOTAL", COLUMNS.ticker)}</Text>
+    <Box marginTop={marginTop}>
+      <Text bold>{padRight(label, COLUMNS.ticker)}</Text>
       <Text>{padLeft("", COLUMNS.quantity)}</Text>
       <Text>{padLeft("", COLUMNS.price)}</Text>
       <Text>{padLeft("", COLUMNS.avgCost)}</Text>
       <Box width={COLUMNS.unrealizedPnL} justifyContent="flex-end">
-        <Text bold>
-          <PnLText value={totalUnrealizedPnL} />
-        </Text>
+        {unrealizedPnL === null ? (
+          <Text>{padLeft("", COLUMNS.unrealizedPnL)}</Text>
+        ) : (
+          <Text bold>
+            <PnLText value={unrealizedPnL} />
+          </Text>
+        )}
       </Box>
-      <Text>{padLeft("100.0%", COLUMNS.portfolioPct)}</Text>
+      <Text>{padLeft(portfolioPct === null ? "" : `${formatNumber(portfolioPct, 1)}%`, COLUMNS.portfolioPct)}</Text>
       <Text>{padLeft("", COLUMNS.nextTransition)}</Text>
       <Text bold>{padLeft(formatCurrency(totalValue), COLUMNS.marketValue)}</Text>
     </Box>
@@ -158,6 +229,9 @@ export const PortfolioView: React.FC = () => {
   const positions = useStore((s) => s.positions);
   const totalEquity = useStore((s) => s.totalEquity);
   const cashBalance = useStore((s) => s.cashBalance);
+  const cashBalancesByCurrency = useStore((s) => s.cashBalancesByCurrency);
+  const cashExchangeRatesByCurrency = useStore((s) => s.cashExchangeRatesByCurrency);
+  const baseCurrencyCode = useStore((s) => s.baseCurrencyCode);
   const subscribePortfolio = useStore((s) => s.subscribePortfolio);
   const initialLoadComplete = useStore((s) => s.initialLoadComplete);
   const lastPortfolioUpdateAt = useStore((s) => s.lastPortfolioUpdateAt);
@@ -173,6 +247,16 @@ export const PortfolioView: React.FC = () => {
     const unsubscribe = subscribePortfolio();
     return () => unsubscribe();
   }, [subscribePortfolio]);
+
+  const cashHoldings = deriveCashHoldings(
+    cashBalance,
+    cashBalancesByCurrency,
+    cashExchangeRatesByCurrency,
+    baseCurrencyCode,
+  );
+  const positionsValue = positions.reduce((sum, position) => sum + position.marketValue, 0);
+  const positionsUnrealizedPnL = positions.reduce((sum, position) => sum + position.unrealizedPnL, 0);
+  const positionsPortfolioPct = totalEquity > 0 ? (positionsValue / totalEquity) * 100 : 0;
 
   if (!initialLoadComplete) {
     return (
@@ -194,9 +278,7 @@ export const PortfolioView: React.FC = () => {
         <RecencyIndicator lastUpdateAt={lastPortfolioUpdateAt} />
       </Box>
       <HeaderRow />
-      <Box borderStyle="single" borderTop borderBottom={false} borderLeft={false} borderRight={false}>
-        <Text> </Text>
-      </Box>
+      <DividerRow />
       {positions.map((position) => (
         <PositionRow
           key={position.conId}
@@ -205,10 +287,46 @@ export const PortfolioView: React.FC = () => {
           nowMs={nowMs}
         />
       ))}
-      <CashRow cashBalance={cashBalance} totalValue={totalEquity} />
+      <DividerRow />
       <SummaryRow
-        positions={positions}
+        label="PORT TOT"
+        totalValue={positionsValue}
+        unrealizedPnL={positionsUnrealizedPnL}
+        portfolioPct={positionsPortfolioPct}
+        marginTop={0}
+      />
+      {cashHoldings.length > 0 && (
+        <>
+          <DividerRow />
+          <Box marginBottom={1}>
+            <Text color="cyan" bold>
+              Cash
+            </Text>
+          </Box>
+          <CashHeaderRow />
+          <DividerRow />
+          {cashHoldings.map((holding) => (
+            <CashRow
+              key={holding.label}
+              holding={holding}
+            />
+          ))}
+          <DividerRow />
+          <SummaryRow
+            label="CASH TOT"
+            totalValue={cashBalance}
+            unrealizedPnL={null}
+            portfolioPct={null}
+            marginTop={0}
+          />
+        </>
+      )}
+      <SummaryRow
+        label="TOTAL"
         totalValue={totalEquity}
+        unrealizedPnL={null}
+        portfolioPct={null}
+        marginTop={0}
       />
     </Box>
   );

@@ -10,6 +10,7 @@ vi.mock("../broker/ibkr/index.js", () => {
       disconnect: vi.fn().mockResolvedValue(undefined),
       isConnected: vi.fn().mockReturnValue(false),
       onDisconnect: vi.fn().mockReturnValue(vi.fn()),
+      onStatus: vi.fn().mockReturnValue(vi.fn()),
       subscribePortfolio: vi.fn((callback: (update: PortfolioUpdate) => void) => {
         callback({
           positions: [
@@ -29,6 +30,9 @@ vi.mock("../broker/ibkr/index.js", () => {
           positionsMarketValue: 15050,
           totalEquity: 20050,
           cashBalance: 5000,
+          cashBalancesByCurrency: { USD: 5000 },
+          cashExchangeRatesByCurrency: { USD: 1 },
+          baseCurrencyCode: "USD",
           initialLoadComplete: true,
           lastPortfolioUpdateAt: 1000,
         });
@@ -48,10 +52,14 @@ describe("store", () => {
     useStore.setState({
       connectionStatus: "disconnected",
       error: null,
+      brokerStatus: null,
       positions: [],
       positionsMarketValue: 0,
       totalEquity: 0,
       cashBalance: 0,
+      cashBalancesByCurrency: {},
+      cashExchangeRatesByCurrency: {},
+      baseCurrencyCode: null,
       initialLoadComplete: false,
       lastPortfolioUpdateAt: null,
     });
@@ -90,6 +98,23 @@ describe("store", () => {
 
       const state = useStore.getState();
       expect(state.lastPortfolioUpdateAt).toBe(1000);
+    });
+
+    it("updates cashBalancesByCurrency from broker subscription", () => {
+      const { subscribePortfolio } = useStore.getState();
+      subscribePortfolio();
+
+      const state = useStore.getState();
+      expect(state.cashBalancesByCurrency).toEqual({ USD: 5000 });
+    });
+
+    it("updates cash exchange-rate state from broker subscription", () => {
+      const { subscribePortfolio } = useStore.getState();
+      subscribePortfolio();
+
+      const state = useStore.getState();
+      expect(state.cashExchangeRatesByCurrency).toEqual({ USD: 1 });
+      expect(state.baseCurrencyCode).toBe("USD");
     });
 
     it("returns an unsubscribe function", () => {
@@ -131,6 +156,9 @@ describe("store", () => {
       expect(state.totalEquity).toBe(0);
       expect(state.positionsMarketValue).toBe(0);
       expect(state.cashBalance).toBe(0);
+      expect(state.cashBalancesByCurrency).toEqual({});
+      expect(state.cashExchangeRatesByCurrency).toEqual({});
+      expect(state.baseCurrencyCode).toBeNull();
       expect(state.lastPortfolioUpdateAt).toBeNull();
       expect(state.connectionStatus).toBe("disconnected");
     });

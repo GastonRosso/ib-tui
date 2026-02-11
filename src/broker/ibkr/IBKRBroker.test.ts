@@ -3,6 +3,7 @@ import type EventEmitter from "events";
 
 vi.mock("../../utils/logger.js", () => ({
   log: vi.fn(),
+  isLogLevelEnabled: vi.fn(() => true),
 }));
 
 vi.mock("@stoqey/ib", async () => {
@@ -13,12 +14,23 @@ vi.mock("@stoqey/ib", async () => {
     disconnected: "disconnected",
     nextValidId: "nextValidId",
     error: "error",
+    info: "info",
+    sent: "sent",
+    received: "received",
+    all: "all",
     managedAccounts: "managedAccounts",
     updatePortfolio: "updatePortfolio",
     updateAccountValue: "updateAccountValue",
+    updateAccountTime: "updateAccountTime",
     accountDownloadEnd: "accountDownloadEnd",
     contractDetails: "contractDetails",
     contractDetailsEnd: "contractDetailsEnd",
+    tickPrice: "tickPrice",
+    tickSize: "tickSize",
+    tickGeneric: "tickGeneric",
+    tickString: "tickString",
+    tickReqParams: "tickReqParams",
+    tickSnapshotEnd: "tickSnapshotEnd",
   };
 
   class MockIBApiClass extends events.EventEmitter {
@@ -27,6 +39,8 @@ vi.mock("@stoqey/ib", async () => {
     cancelOrder = vi.fn();
     reqAccountUpdates = vi.fn();
     reqContractDetails = vi.fn();
+    reqMktData = vi.fn();
+    cancelMktData = vi.fn();
   }
 
   return {
@@ -47,10 +61,58 @@ describe("IBKRBroker", () => {
     broker = new IBKRBroker();
   });
 
+  describe("status events", () => {
+    let mockApi: EventEmitter;
+
+    beforeEach(async () => {
+      const connectPromise = broker.connect({ host: "127.0.0.1", port: 4002, clientId: 1 });
+      const maybeApi = Reflect.get(broker, "api");
+      if (!maybeApi) throw new Error("Expected api to be initialized after connect()");
+      mockApi = maybeApi;
+      mockApi.emit(EventName.nextValidId, 1);
+      await connectPromise;
+    });
+
+    it("emits farm connectivity info events as broker status", () => {
+      const callback = vi.fn();
+      broker.onStatus(callback);
+
+      mockApi.emit(EventName.info, "Market data farm connection is broken:eufarm", 2103);
+
+      expect(callback).toHaveBeenCalledWith(
+        expect.objectContaining({
+          level: "error",
+          code: 2103,
+          message: "Market data farm connection is broken:eufarm",
+          at: expect.any(Number),
+        })
+      );
+    });
+
+    it("emits API errors as broker status", () => {
+      const callback = vi.fn();
+      broker.onStatus(callback);
+
+      mockApi.emit(EventName.error, new Error("Permission denied"), 201, 700001);
+
+      expect(callback).toHaveBeenCalledWith(
+        expect.objectContaining({
+          level: "error",
+          code: 201,
+          reqId: 700001,
+          message: "Permission denied",
+          at: expect.any(Number),
+        })
+      );
+    });
+  });
+
   describe("subscribePortfolio", () => {
     let mockApi: EventEmitter & {
       reqAccountUpdates: ReturnType<typeof vi.fn>;
       reqContractDetails: ReturnType<typeof vi.fn>;
+      reqMktData: ReturnType<typeof vi.fn>;
+      cancelMktData: ReturnType<typeof vi.fn>;
     };
 
     beforeEach(async () => {
@@ -124,6 +186,7 @@ describe("IBKRBroker", () => {
           positionsMarketValue: 15050,
           totalEquity: 15050,
           cashBalance: 0,
+          cashBalancesByCurrency: {},
           initialLoadComplete: false,
         })
       );
@@ -298,6 +361,25 @@ describe("IBKRBroker", () => {
       expect(lastCall.totalEquity).toBe(20050);
       expect(lastCall.positionsMarketValue).toBe(15050);
       expect(lastCall.cashBalance).toBe(5000);
+      expect(lastCall.cashBalancesByCurrency).toEqual({});
+    });
+
+    it("captures cash balances by currency from account updates", () => {
+      const callback = vi.fn();
+      broker.subscribePortfolio(callback);
+
+      mockApi.emit(EventName.updateAccountValue, "ExchangeRate", "1.00", "USD", "DU123456");
+      mockApi.emit(EventName.updateAccountValue, "ExchangeRate", "1.20", "EUR", "DU123456");
+      mockApi.emit(EventName.updateAccountValue, "TotalCashBalance", "1200.50", "USD", "DU123456");
+      mockApi.emit(EventName.updateAccountValue, "TotalCashBalance", "350.25", "EUR", "DU123456");
+      mockApi.emit(EventName.updateAccountValue, "TotalCashBalance", "1600.75", "BASE", "DU123456");
+
+      const lastCall = callback.mock.calls.at(-1)?.[0];
+      expect(lastCall.cashBalance).toBe(1600.75);
+      expect(lastCall.cashBalancesByCurrency).toEqual({
+        EUR: 420.3,
+        USD: 1200.5,
+      });
     });
 
     it("sets initialLoadComplete on accountDownloadEnd", () => {

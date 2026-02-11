@@ -21,6 +21,10 @@ type ReplayState = {
   selectedAccount: string;
   positions: Map<number, PositionState>;
   cashBalance: number;
+  hasBaseCashBalance: boolean;
+  baseCurrencyCode: string | null;
+  localCashBalancesByCurrency: Map<string, number>;
+  exchangeRatesByCurrency: Map<string, number>;
 };
 
 const parseFields = (detail: string): Record<string, string> => {
@@ -72,6 +76,60 @@ const sumPositions = (positions: Map<number, PositionState>): number => {
   return sum;
 };
 
+const computeConvertedCashBreakdown = (state: ReplayState): {
+  rows: Array<[string, number]>;
+  allConvertible: boolean;
+} => {
+  const baseCurrencyCode = state.baseCurrencyCode;
+  const rawByCurrency = new Map<string, number>();
+  let rawNonBaseTotal = 0;
+  let baseCurrencyLocalAmount = 0;
+  let allConvertible = true;
+
+  for (const [currency, localAmount] of state.localCashBalancesByCurrency.entries()) {
+    if (baseCurrencyCode && currency === baseCurrencyCode) {
+      baseCurrencyLocalAmount = localAmount;
+      rawByCurrency.set(currency, localAmount);
+      continue;
+    }
+
+    const exchangeRate = state.exchangeRatesByCurrency.get(currency);
+    if (exchangeRate === undefined) {
+      allConvertible = false;
+      continue;
+    }
+
+    const rawValueInBase = localAmount * exchangeRate;
+    rawByCurrency.set(currency, rawValueInBase);
+    rawNonBaseTotal += rawValueInBase;
+  }
+
+  let nonBaseScale = 1;
+  if (state.hasBaseCashBalance && baseCurrencyCode && rawNonBaseTotal > 0) {
+    const targetNonBaseInBase = Math.max(0, state.cashBalance - baseCurrencyLocalAmount);
+    nonBaseScale = targetNonBaseInBase / rawNonBaseTotal;
+  }
+
+  const rows: Array<[string, number]> = [];
+  for (const [currency, rawValueInBase] of rawByCurrency.entries()) {
+    const value = baseCurrencyCode && currency !== baseCurrencyCode
+      ? rawValueInBase * nonBaseScale
+      : rawValueInBase;
+    rows.push([currency, value]);
+  }
+  rows.sort(([a], [b]) => a.localeCompare(b));
+  return { rows, allConvertible };
+};
+
+const sumConvertedCashInBase = (state: ReplayState): number =>
+  computeConvertedCashBreakdown(state).rows.reduce((sum, [, value]) => sum + value, 0);
+
+const formatConvertedCashRows = (state: ReplayState): string => {
+  const rows = computeConvertedCashBreakdown(state).rows;
+  if (rows.length === 0) return "none";
+  return rows.map(([currency, value]) => `${currency}:${value.toFixed(2)}`).join(",");
+};
+
 describe("IBKR stream log replay", () => {
   it("replays stream logs and checks account-update-only invariants", () => {
     const inputPath = process.env.IBKR_STREAM_LOG_PATH;
@@ -93,6 +151,10 @@ describe("IBKR stream log replay", () => {
       selectedAccount: "",
       positions: new Map(),
       cashBalance: 0,
+      hasBaseCashBalance: false,
+      baseCurrencyCode: null,
+      localCashBalancesByCurrency: new Map(),
+      exchangeRatesByCurrency: new Map(),
     });
 
     let state: ReplayState = createInitialState();
@@ -100,9 +162,15 @@ describe("IBKR stream log replay", () => {
 
     const failures: string[] = [];
     const absTol = 0.05;
+    const cashConsistencyTol = 0.25;
 
     let sawPnlSubscription = false;
     let sawPnlSingleSubscription = false;
+    let sawNonBaseCashBalance = false;
+    let sawExchangeRate = false;
+    let sawContractDetailsRequest = false;
+    let sawContractDetails = false;
+    const pendingFxReqIds = new Set<number>();
 
     for (let i = 0; i < lines.length; i++) {
       const rawLine = lines[i];
@@ -170,20 +238,67 @@ describe("IBKR stream log replay", () => {
         }
         if (value === null) continue;
 
-        if (key === "TotalCashBalance" && currency === "BASE") {
-          state.cashBalance = value;
+        if (key === "TotalCashBalance") {
+          if (currency === "BASE") {
+            state.cashBalance = value;
+            state.hasBaseCashBalance = true;
+          } else if (currency) {
+            state.localCashBalancesByCurrency.set(currency, value);
+            sawNonBaseCashBalance = true;
+          }
         }
+
+        if ((key === "TotalCashValue" || key === "NetLiquidation") && currency && currency !== "BASE") {
+          state.baseCurrencyCode = currency;
+        }
+
+        if (key === "ExchangeRate" && currency) {
+          state.exchangeRatesByCurrency.set(currency, value);
+          sawExchangeRate = true;
+        }
+      }
+
+      if (line.stream === "event.reqContractDetails") {
+        sawContractDetailsRequest = true;
+      }
+
+      if (line.stream === "event.contractDetails") {
+        sawContractDetails = true;
+      }
+
+      if (line.stream === "subscription.fx" && line.detail.includes("reqMktData start")) {
+        const reqId = toFiniteNumber(line.fields.reqId);
+        if (reqId !== null) pendingFxReqIds.add(reqId);
+      }
+
+      if (line.stream === "event.fxRate") {
+        const reqId = toFiniteNumber(line.fields.reqId);
+        const currency = line.fields.currency;
+        const rate = toFiniteNumber(line.fields.rate);
+        if (reqId !== null) pendingFxReqIds.delete(reqId);
+        if (currency && rate !== null) {
+          state.exchangeRatesByCurrency.set(currency, rate);
+          sawExchangeRate = true;
+        }
+      }
+
+      if (line.stream === "error") {
+        const reqId = toFiniteNumber(line.fields.reqId);
+        if (reqId !== null) pendingFxReqIds.delete(reqId);
       }
 
       if (line.stream === "state.snapshot") {
         const emittedPositions = toFiniteNumber(line.fields.positionsMV);
         const emittedCash = toFiniteNumber(line.fields.cash);
+        const emittedCashFx = toFiniteNumber(line.fields.cashFx);
+        const emittedCashFxRows = line.fields.cashFxRows;
         const emittedTotal = toFiniteNumber(line.fields.totalEquity);
         if (emittedPositions === null || emittedCash === null || emittedTotal === null) {
           continue;
         }
 
         const expectedPositions = sumPositions(state.positions);
+        const expectedCashFx = sumConvertedCashInBase(state);
         const expectedTotal = expectedPositions + state.cashBalance;
 
         if (Math.abs(expectedPositions - emittedPositions) > absTol) {
@@ -203,6 +318,32 @@ describe("IBKR stream log replay", () => {
             `[session=${session} line=${line.lineNo}] [emit mismatch] total expected=${expectedTotal.toFixed(2)} emitted=${emittedTotal.toFixed(2)} t=${line.timeMs}`
           );
         }
+
+        if (emittedCashFx !== null && Math.abs(expectedCashFx - emittedCashFx) > absTol) {
+          failures.push(
+            `[session=${session} line=${line.lineNo}] [emit mismatch] cashFx expected=${expectedCashFx.toFixed(2)} emitted=${emittedCashFx.toFixed(2)} t=${line.timeMs}`
+          );
+        }
+
+        if (emittedCashFxRows) {
+          const expectedRows = formatConvertedCashRows(state);
+          if (expectedRows !== emittedCashFxRows) {
+            failures.push(
+              `[session=${session} line=${line.lineNo}] [emit mismatch] cashFxRows expected=${expectedRows} emitted=${emittedCashFxRows} t=${line.timeMs}`
+            );
+          }
+        }
+
+        if (
+          state.localCashBalancesByCurrency.size > 0 &&
+          computeConvertedCashBreakdown(state).allConvertible &&
+          state.hasBaseCashBalance &&
+          Math.abs(expectedCashFx - emittedCash) > cashConsistencyTol
+        ) {
+          failures.push(
+            `[session=${session} line=${line.lineNo}] [consistency] converted cash (${expectedCashFx.toFixed(2)}) differs from BASE cash (${emittedCash.toFixed(2)}) t=${line.timeMs}`
+          );
+        }
       }
     }
 
@@ -212,6 +353,15 @@ describe("IBKR stream log replay", () => {
     }
     if (sawPnlSingleSubscription) {
       failures.push("[regression] Found reqPnLSingle subscription in log - should not exist after simplification");
+    }
+    if (sawNonBaseCashBalance && !sawExchangeRate) {
+      failures.push("[regression] Found non-BASE cash balances but no ExchangeRate events in log");
+    }
+    if (sawContractDetailsRequest && !sawContractDetails) {
+      failures.push("[regression] Contract details were requested but never returned; market-hours will remain n/a");
+    }
+    if (pendingFxReqIds.size > 0) {
+      failures.push(`[regression] FX reqMktData started but no fxRate/error observed for reqIds=${Array.from(pendingFxReqIds).join(",")}`);
     }
 
     if (failures.length > 0) {

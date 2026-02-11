@@ -36,6 +36,7 @@ describe("PortfolioView", () => {
     disconnect: async () => undefined,
     isConnected: () => true,
     onDisconnect: () => () => {},
+    onStatus: () => () => {},
     getAccountSummary: async () => ({
       accountId: "DU123456",
       netLiquidation: 0,
@@ -55,10 +56,14 @@ describe("PortfolioView", () => {
     broker: createMockBroker(),
     connectionStatus: "connected",
     error: null,
+    brokerStatus: null,
     positions: [],
     positionsMarketValue: 0,
     totalEquity: 0,
     cashBalance: 0,
+    cashBalancesByCurrency: {},
+    cashExchangeRatesByCurrency: {},
+    baseCurrencyCode: null,
     initialLoadComplete: true,
     lastPortfolioUpdateAt: Date.now(),
     connect: async () => undefined,
@@ -113,7 +118,7 @@ describe("PortfolioView", () => {
     });
 
     const { lastFrame } = render(<PortfolioView />);
-    const frame = lastFrame();
+    const frame = lastFrame() ?? "";
 
     expect(frame).toContain("AAPL");
     expect(frame).toContain("100");
@@ -136,7 +141,7 @@ describe("PortfolioView", () => {
     });
 
     const { lastFrame } = render(<PortfolioView />);
-    const frame = lastFrame();
+    const frame = lastFrame() ?? "";
 
     expect(frame).toContain("Ticker");
     expect(frame).toContain("Qty");
@@ -164,7 +169,7 @@ describe("PortfolioView", () => {
     });
 
     const { lastFrame } = render(<PortfolioView />);
-    const frame = lastFrame();
+    const frame = lastFrame() ?? "";
 
     expect(frame).toContain("TOTAL");
     expect(frame).toContain("100.0%");
@@ -188,7 +193,7 @@ describe("PortfolioView", () => {
     });
 
     const { lastFrame } = render(<PortfolioView />);
-    const frame = lastFrame();
+    const frame = lastFrame() ?? "";
 
     expect(frame).toContain("75.0%");
     expect(frame).toContain("25.0%");
@@ -380,5 +385,88 @@ describe("PortfolioView", () => {
 
     expect(frame).not.toContain("Portfolio Δ since connect");
     expect(frame).not.toContain("Collecting data for chart");
+  });
+
+  it("renders cash holdings grouped by currency codes", () => {
+    mockUseStore.mockImplementation((selector) => {
+      const state: AppState = {
+        ...createBaseState(),
+        positions: [createMockPosition()],
+        totalEquity: 17050,
+        cashBalance: 2000,
+        cashBalancesByCurrency: { EUR: 500, USD: 1500 },
+        cashExchangeRatesByCurrency: { EUR: 1.2, USD: 1 },
+        baseCurrencyCode: "USD",
+        subscribePortfolio: mockSubscribe,
+        initialLoadComplete: true,
+        lastPortfolioUpdateAt: Date.now(),
+      };
+      return selector ? selector(state) : state;
+    });
+
+    const { lastFrame } = render(<PortfolioView />);
+    const frame = lastFrame() ?? "";
+
+    expect(frame).toContain("Cash");
+    expect(frame).toContain("Curr");
+    expect(frame).toContain("FX Rate");
+    expect(frame).toContain("PORT TOT");
+    expect(frame).toContain("CASH TOT");
+    expect(frame).toContain("TOTAL");
+    expect(frame).toContain("EUR");
+    expect(frame).toContain("USD");
+    expect(frame).toContain("1.2000");
+    expect(frame).toContain("500.00");
+    expect(frame).toContain("1,500.00");
+  });
+
+  it("renders an extra divider between assets and cash holdings", () => {
+    mockUseStore.mockImplementation((selector) => {
+      const state: AppState = {
+        ...createBaseState(),
+        positions: [createMockPosition()],
+        totalEquity: 17050,
+        cashBalance: 2000,
+        cashBalancesByCurrency: { USD: 2000 },
+        cashExchangeRatesByCurrency: { USD: 1 },
+        baseCurrencyCode: "USD",
+        subscribePortfolio: mockSubscribe,
+        initialLoadComplete: true,
+        lastPortfolioUpdateAt: Date.now(),
+      };
+      return selector ? selector(state) : state;
+    });
+
+    const { lastFrame } = render(<PortfolioView />);
+    const frame = lastFrame() ?? "";
+    const separatorRows = frame
+      .split("\n")
+      .filter((line) => line.includes("─"))
+      .length;
+
+    expect(separatorRows).toBeGreaterThanOrEqual(2);
+  });
+
+  it("falls back to BASE cash row when no per-currency cash balances are present", () => {
+    mockUseStore.mockImplementation((selector) => {
+      const state: AppState = {
+        ...createBaseState(),
+        positions: [createMockPosition()],
+        totalEquity: 16250,
+        cashBalance: 1200,
+        cashBalancesByCurrency: {},
+        subscribePortfolio: mockSubscribe,
+        initialLoadComplete: true,
+        lastPortfolioUpdateAt: Date.now(),
+      };
+      return selector ? selector(state) : state;
+    });
+
+    const { lastFrame } = render(<PortfolioView />);
+    const frame = lastFrame() ?? "";
+
+    expect(frame).toContain("Cash");
+    expect(frame).toContain("BASE");
+    expect(frame).toContain("$1,200.00");
   });
 });

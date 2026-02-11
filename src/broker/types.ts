@@ -64,8 +64,21 @@ export type PortfolioUpdate = {
   positionsMarketValue: number;
   totalEquity: number;
   cashBalance: number;
+  cashBalancesByCurrency: Record<string, number>;
+  cashExchangeRatesByCurrency: Record<string, number>;
+  baseCurrencyCode: string | null;
   initialLoadComplete: boolean;
   lastPortfolioUpdateAt: number;
+};
+
+export type BrokerStatusLevel = "info" | "warn" | "error";
+
+export type BrokerStatus = {
+  level: BrokerStatusLevel;
+  message: string;
+  code?: number;
+  reqId?: number;
+  at: number;
 };
 
 export type Broker = {
@@ -73,6 +86,7 @@ export type Broker = {
   disconnect(): Promise<void>;
   isConnected(): boolean;
   onDisconnect(callback: () => void): () => void;
+  onStatus(callback: (status: BrokerStatus) => void): () => void;
 
   getAccountSummary(): Promise<AccountSummary>;
   getPositions(): Promise<Position[]>;

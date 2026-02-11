@@ -4,11 +4,72 @@ import type { PortfolioProjection, PortfolioState, PortfolioUpdateEvent } from "
 const recomputeMarketValue = (positions: Map<number, Position>): number =>
   Array.from(positions.values()).reduce((sum, p) => sum + p.marketValue, 0);
 
+const toCashBalancesByCurrency = (balances: Map<string, number>): Record<string, number> =>
+  Array.from(balances.entries())
+    .sort(([a], [b]) => a.localeCompare(b))
+    .reduce<Record<string, number>>((acc, [currency, value]) => {
+      acc[currency] = value;
+      return acc;
+    }, {});
+
+const toExchangeRatesByCurrency = (rates: Map<string, number>): Record<string, number> =>
+  Array.from(rates.entries())
+    .sort(([a], [b]) => a.localeCompare(b))
+    .reduce<Record<string, number>>((acc, [currency, value]) => {
+      acc[currency] = value;
+      return acc;
+    }, {});
+
+const recomputeCashBalancesInBase = (state: PortfolioState): void => {
+  state.cashBalancesByCurrency.clear();
+
+  const baseCurrencyCode = state.baseCurrencyCode;
+  const hasBaseCashBalance = state.hasBaseCashBalance;
+  const rawByCurrency = new Map<string, number>();
+  let rawNonBaseTotal = 0;
+  let baseCurrencyLocalAmount = 0;
+
+  for (const [currency, localAmount] of state.localCashBalancesByCurrency.entries()) {
+    if (baseCurrencyCode && currency === baseCurrencyCode) {
+      baseCurrencyLocalAmount = localAmount;
+      rawByCurrency.set(currency, localAmount);
+      continue;
+    }
+
+    const exchangeRate = state.exchangeRatesByCurrency.get(currency);
+    if (exchangeRate === undefined) continue;
+
+    const rawValueInBase = localAmount * exchangeRate;
+    rawByCurrency.set(currency, rawValueInBase);
+    rawNonBaseTotal += rawValueInBase;
+  }
+
+  let nonBaseScale = 1;
+  if (hasBaseCashBalance && baseCurrencyCode && rawNonBaseTotal > 0) {
+    const targetNonBaseInBase = Math.max(0, state.cashBalance - baseCurrencyLocalAmount);
+    nonBaseScale = targetNonBaseInBase / rawNonBaseTotal;
+  }
+
+  for (const [currency, rawValueInBase] of rawByCurrency.entries()) {
+    if (baseCurrencyCode && currency !== baseCurrencyCode) {
+      state.cashBalancesByCurrency.set(currency, rawValueInBase * nonBaseScale);
+      continue;
+    }
+
+    state.cashBalancesByCurrency.set(currency, rawValueInBase);
+  }
+};
+
 export const createPortfolioProjection = (now = () => Date.now()): PortfolioProjection => {
   const state: PortfolioState = {
     positions: new Map<number, Position>(),
     positionsMarketValue: 0,
     cashBalance: 0,
+    cashBalancesByCurrency: new Map<string, number>(),
+    localCashBalancesByCurrency: new Map<string, number>(),
+    exchangeRatesByCurrency: new Map<string, number>(),
+    baseCurrencyCode: null,
+    hasBaseCashBalance: false,
     initialLoadComplete: false,
     lastPortfolioUpdateAt: now(),
   };
@@ -17,6 +78,9 @@ export const createPortfolioProjection = (now = () => Date.now()): PortfolioProj
     positions: Array.from(state.positions.values()),
     positionsMarketValue: state.positionsMarketValue,
     cashBalance: state.cashBalance,
+    cashBalancesByCurrency: toCashBalancesByCurrency(state.cashBalancesByCurrency),
+    cashExchangeRatesByCurrency: toExchangeRatesByCurrency(state.exchangeRatesByCurrency),
+    baseCurrencyCode: state.baseCurrencyCode,
     totalEquity: state.positionsMarketValue + state.cashBalance,
     initialLoadComplete: state.initialLoadComplete,
     lastPortfolioUpdateAt: state.lastPortfolioUpdateAt,
@@ -47,8 +111,35 @@ export const createPortfolioProjection = (now = () => Date.now()): PortfolioProj
     state.lastPortfolioUpdateAt = now();
   };
 
-  const applyCashBalance = (value: string): void => {
-    state.cashBalance = Number.parseFloat(value) || 0;
+  const applyCashBalance = (currency: string, value: string): void => {
+    const parsed = Number.parseFloat(value);
+    const nextValue = Number.isFinite(parsed) ? parsed : 0;
+
+    if (currency === "BASE") {
+      state.cashBalance = nextValue;
+      state.hasBaseCashBalance = true;
+      recomputeCashBalancesInBase(state);
+    } else if (currency) {
+      state.localCashBalancesByCurrency.set(currency, nextValue);
+      recomputeCashBalancesInBase(state);
+    }
+
+    state.lastPortfolioUpdateAt = now();
+  };
+
+  const applyExchangeRate = (currency: string, value: string): void => {
+    const parsed = Number.parseFloat(value);
+    if (!currency || !Number.isFinite(parsed)) return;
+    state.exchangeRatesByCurrency.set(currency, parsed);
+    recomputeCashBalancesInBase(state);
+    state.lastPortfolioUpdateAt = now();
+  };
+
+  const setBaseCurrency = (currency: string): void => {
+    if (!currency || currency === "BASE") return;
+    if (state.baseCurrencyCode === currency) return;
+    state.baseCurrencyCode = currency;
+    recomputeCashBalancesInBase(state);
     state.lastPortfolioUpdateAt = now();
   };
 
@@ -64,5 +155,5 @@ export const createPortfolioProjection = (now = () => Date.now()): PortfolioProj
     state.lastPortfolioUpdateAt = now();
   };
 
-  return { applyPortfolioUpdate, applyCashBalance, markInitialLoadComplete, attachMarketHours, snapshot };
+  return { applyPortfolioUpdate, applyCashBalance, applyExchangeRate, setBaseCurrency, markInitialLoadComplete, attachMarketHours, snapshot };
 };

@@ -6,6 +6,8 @@ const createMockApi = () =>
   Object.assign(new EventEmitter(), {
     reqAccountUpdates: vi.fn(),
     reqContractDetails: vi.fn(),
+    reqMktData: vi.fn(),
+    cancelMktData: vi.fn(),
     removeListener: EventEmitter.prototype.removeListener,
   });
 
@@ -108,5 +110,32 @@ describe("createPortfolioSubscription", () => {
       liquidHours: "20260210:0930-1600",
       tradingHours: "20260210:0400-2000",
     });
+  });
+
+  it("subscribes to IDEALPRO FX and updates converted cash from live ticks", () => {
+    const api = createMockApi();
+    const callback = vi.fn();
+
+    const unsubscribe = createPortfolioSubscription({
+      api,
+      accountId: "DU123456",
+      callback,
+    });
+
+    api.emit("updateAccountValue", "TotalCashValue", "1000", "USD", "DU123456");
+    api.emit("updateAccountValue", "TotalCashBalance", "500", "EUR", "DU123456");
+    api.emit("accountDownloadEnd", "DU123456");
+
+    expect(api.reqMktData).toHaveBeenCalledTimes(1);
+    const [reqId] = api.reqMktData.mock.calls[0];
+
+    api.emit("tickPrice", reqId, 1, 1.1, true);
+    api.emit("tickPrice", reqId, 2, 1.3, true);
+
+    const lastUpdate = callback.mock.calls.at(-1)?.[0];
+    expect(lastUpdate.cashBalancesByCurrency.EUR).toBeCloseTo(600, 6);
+
+    unsubscribe();
+    expect(api.cancelMktData).toHaveBeenCalledWith(reqId);
   });
 });

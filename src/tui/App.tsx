@@ -1,12 +1,14 @@
 import React, { useEffect } from "react";
 import { Box, Text, useApp, useInput } from "ink";
 import { useStore } from "../state/store.js";
+import type { BrokerStatus } from "../broker/types.js";
 import type { ConnectionStatus } from "../state/types.js";
 import { PortfolioView } from "./PortfolioView.js";
 
 export const App: React.FC = () => {
   const { exit } = useApp();
   const connectionStatus = useStore((s) => s.connectionStatus);
+  const brokerStatus = useStore((s) => s.brokerStatus);
   const connect = useStore((s) => s.connect);
   const disconnect = useStore((s) => s.disconnect);
 
@@ -30,7 +32,7 @@ export const App: React.FC = () => {
           IBKR TUI
         </Text>
         <Text dimColor> | </Text>
-        <StatusIndicator status={connectionStatus} />
+        <StatusIndicator status={connectionStatus} brokerStatus={brokerStatus} />
       </Box>
 
       <Box marginBottom={1}>
@@ -42,9 +44,31 @@ export const App: React.FC = () => {
   );
 };
 
-const StatusIndicator: React.FC<{ status: ConnectionStatus }> = ({ status }) => {
+const formatBrokerStatus = (status: BrokerStatus): string => {
+  const normalizedMessage = status.message.replace(/\s+/g, " ").trim();
+  const codePrefix = status.code !== undefined ? `[${status.code}] ` : "";
+  return `${codePrefix}${normalizedMessage}`;
+};
+
+const StatusIndicator: React.FC<{ status: ConnectionStatus; brokerStatus: BrokerStatus | null }> = ({
+  status,
+  brokerStatus,
+}) => {
   const color = status === "connected" ? "green" : status === "connecting" ? "yellow" : "red";
-  return <Text color={color}>● {status}</Text>;
+  const brokerColor =
+    brokerStatus?.level === "error" ? "red" : brokerStatus?.level === "warn" ? "yellow" : "gray";
+
+  return (
+    <>
+      <Text color={color}>● {status}</Text>
+      {brokerStatus && (
+        <>
+          <Text dimColor> | </Text>
+          <Text color={brokerColor}>{formatBrokerStatus(brokerStatus)}</Text>
+        </>
+      )}
+    </>
+  );
 };
 
 const MainView: React.FC = () => {
