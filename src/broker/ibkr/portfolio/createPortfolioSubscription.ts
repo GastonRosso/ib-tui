@@ -325,6 +325,10 @@ export const createPortfolioSubscription = ({ api, accountId: accountIdOrFn, cal
     }
 
     if (key === "ExchangeRate") {
+      const parsed = Number.parseFloat(value);
+      if (Number.isFinite(parsed)) {
+        lastAppliedFxRateByCurrency.set(currency, parsed);
+      }
       projection.applyExchangeRate(currency, value);
     } else {
       projection.applyCashBalance(currency, value);
@@ -358,15 +362,17 @@ export const createPortfolioSubscription = ({ api, accountId: accountIdOrFn, cal
     const nextRate = calculateFxRate(quote);
     if (nextRate === null) return;
 
+    // Track freshness even when rate hasn't changed, to avoid unnecessary stale recovery
+    if (fxState) {
+      fxState.sawRate = true;
+      fxState.lastRateAtMs = now();
+    }
+
     const previousRate = lastAppliedFxRateByCurrency.get(currency);
     if (previousRate !== undefined && Math.abs(previousRate - nextRate) < 1e-9) return;
 
     lastAppliedFxRateByCurrency.set(currency, nextRate);
     liveFxRateCurrencies.add(currency);
-    if (fxState) {
-      fxState.sawRate = true;
-      fxState.lastRateAtMs = now();
-    }
     projection.applyExchangeRate(currency, String(nextRate));
     log(
       "debug",

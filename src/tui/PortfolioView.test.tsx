@@ -244,7 +244,7 @@ describe("PortfolioView", () => {
     const { lastFrame } = render(<PortfolioView />);
     const frame = lastFrame() ?? "";
 
-    expect(frame).toContain("Total");
+    expect(frame).toContain("Pos Tot");
     expect(frame).toContain("100.0%");
   });
 
@@ -488,7 +488,7 @@ describe("PortfolioView", () => {
     expect(frame).toContain("FX Rate");
     expect(frame).toContain("Pos Tot");
     expect(frame).toContain("Cash Tot");
-    expect(frame).toContain("Total");
+    expect(frame).toContain("Tot");
     expect(frame).toContain("EUR");
     expect(frame).toContain("USD");
     expect(frame).toContain("1.2000");

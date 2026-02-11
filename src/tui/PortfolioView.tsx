@@ -422,7 +422,7 @@ export const PortfolioView: React.FC = () => {
         </>
       )}
       <SummaryRow
-        label="Total"
+        label="Tot"
         totalValue={displayTotalEquity}
         unrealizedPnL={null}
         portfolioPct={null}

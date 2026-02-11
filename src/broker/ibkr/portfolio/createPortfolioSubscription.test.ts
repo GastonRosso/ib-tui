@@ -197,4 +197,40 @@ describe("createPortfolioSubscription", () => {
     unsubscribe();
     expect(api.cancelMktData).toHaveBeenCalledWith(reqId);
   });
+
+  it("live FX rate survives stale static ExchangeRate overwrite", () => {
+    const api = createMockApi();
+    const callback = vi.fn();
+
+    createPortfolioSubscription({
+      api,
+      accountId: "DU123456",
+      callback,
+    });
+
+    // Set up: base=USD, EUR cash balance=500
+    api.emit("updateAccountValue", "TotalCashValue", "1000", "USD", "DU123456");
+    api.emit("updateAccountValue", "TotalCashBalance", "500", "EUR", "DU123456");
+    api.emit("accountDownloadEnd", "DU123456");
+
+    const [reqId] = api.reqMktData.mock.calls[0];
+
+    // Step 1: Live ticks arrive → mid rate=1.2, converted cash=600
+    api.emit("tickPrice", reqId, 1, 1.1, true);  // bid
+    api.emit("tickPrice", reqId, 2, 1.3, true);  // ask
+    const afterLive = callback.mock.calls.at(-1)?.[0];
+    expect(afterLive.cashBalancesByCurrency.EUR).toBeCloseTo(600, 6);
+
+    // Step 2: Stale static ExchangeRate arrives at 1.0 → overwrites projection
+    api.emit("updateAccountValue", "ExchangeRate", "1.0", "EUR", "DU123456");
+    const afterStatic = callback.mock.calls.at(-1)?.[0];
+    expect(afterStatic.cashBalancesByCurrency.EUR).toBeCloseTo(500, 6);
+
+    // Step 3: Same live ticks arrive again (rate=1.2, same as step 1)
+    // Without the fix, these would be deduped and projection stays at stale 1.0
+    api.emit("tickPrice", reqId, 1, 1.1, true);  // bid
+    api.emit("tickPrice", reqId, 2, 1.3, true);  // ask
+    const afterLiveAgain = callback.mock.calls.at(-1)?.[0];
+    expect(afterLiveAgain.cashBalancesByCurrency.EUR).toBeCloseTo(600, 6);
+  });
 });
