@@ -11,6 +11,7 @@ export const App: React.FC = () => {
   const brokerStatus = useStore((s) => s.brokerStatus);
   const connect = useStore((s) => s.connect);
   const disconnect = useStore((s) => s.disconnect);
+  const cycleDisplayCurrency = useStore((s) => s.cycleDisplayCurrency);
 
   useInput((input, key) => {
     if (input === "q" || (key.ctrl && input === "c")) {
@@ -18,6 +19,12 @@ export const App: React.FC = () => {
     }
     if (input === "c" && (connectionStatus === "disconnected" || connectionStatus === "error")) {
       void connect();
+    }
+    if (input === "]") {
+      cycleDisplayCurrency("next");
+    }
+    if (input === "[") {
+      cycleDisplayCurrency("prev");
     }
   });
 
@@ -36,7 +43,7 @@ export const App: React.FC = () => {
       </Box>
 
       <Box marginBottom={1}>
-        <Text dimColor>Press 'c' to connect, 'q' to quit</Text>
+        <Text dimColor>Press 'c' to connect, 'q' to quit, '[' / ']' to change display currency</Text>
       </Box>
 
       <MainView />

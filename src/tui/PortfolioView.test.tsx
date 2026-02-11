@@ -139,6 +139,65 @@ describe("PortfolioView", () => {
     expect(frame).toContain("$15,050.00");
   });
 
+  it("renders CCY column header and position currency", () => {
+    mockUseStore.mockImplementation((selector) => {
+      const state: AppState = {
+        ...createBaseState(),
+        positions: [createMockPosition()],
+        totalEquity: 15050,
+        positionsMarketValue: 15050,
+        cashBalance: 0,
+        subscribePortfolio: mockSubscribe,
+        initialLoadComplete: true,
+        lastPortfolioUpdateAt: Date.now(),
+      };
+      return selector ? selector(state) : state;
+    });
+
+    const { lastFrame } = render(<PortfolioView />);
+    const frame = lastFrame() ?? "";
+
+    expect(frame).toContain("CCY");
+    expect(frame).toContain("USD");
+  });
+
+  it("shows pending for market value when FX is pending", () => {
+    mockUseStore.mockImplementation((selector) => {
+      const state: AppState = {
+        ...createBaseState(),
+        positions: [
+          createMockPosition({
+            conId: 100,
+            symbol: "SAP",
+            currency: "EUR",
+            marketValue: 10000,
+            marketValueBase: null,
+            unrealizedPnLBase: null,
+            fxRateToBase: null,
+            isFxPending: true,
+          }),
+        ],
+        baseCurrencyCode: "USD",
+        totalEquity: 0,
+        positionsMarketValue: 0,
+        positionsPendingFxCount: 1,
+        cashBalance: 0,
+        subscribePortfolio: mockSubscribe,
+        initialLoadComplete: true,
+        lastPortfolioUpdateAt: Date.now(),
+      };
+      return selector ? selector(state) : state;
+    });
+
+    const { lastFrame } = render(<PortfolioView />);
+    const frame = lastFrame() ?? "";
+
+    expect(frame).toContain("pending");
+    expect(frame).toContain("SAP");
+    expect(frame).toContain("EUR");
+    expect(frame).toContain("pending FX");
+  });
+
   it("renders header row without Day P&L columns", () => {
     mockUseStore.mockImplementation((selector) => {
       const state: AppState = {
@@ -193,9 +252,10 @@ describe("PortfolioView", () => {
       const state: AppState = {
         ...createBaseState(),
         positions: [
-          createMockPosition({ conId: 1, symbol: "AAPL", marketValue: 7500 }),
-          createMockPosition({ conId: 2, symbol: "MSFT", marketValue: 2500 }),
+          createMockPosition({ conId: 1, symbol: "AAPL", marketValue: 7500, marketValueBase: 7500 }),
+          createMockPosition({ conId: 2, symbol: "MSFT", marketValue: 2500, marketValueBase: 2500 }),
         ],
+        positionsMarketValue: 10000,
         totalEquity: 10000,
         cashBalance: 0,
         subscribePortfolio: mockSubscribe,

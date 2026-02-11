@@ -75,11 +75,12 @@ The `subscribePortfolio()` method uses a single IBKR subscription:
 | API Call | Event | Data | Update Frequency |
 |----------|-------|------|------------------|
 | `reqAccountUpdates` | `updatePortfolio` | symbol, avgCost, currency, conId, quantity, marketPrice, marketValue | On portfolio/account updates |
-| `reqAccountUpdates` | `updateAccountValue` | cashBalance (`TotalCashBalance`, `BASE`) | On changes |
+| `reqAccountUpdates` | `updateAccountValue` | cashBalance (`TotalCashBalance`, `BASE`), per-currency balances, base currency, static FX rates | On changes |
 | `reqAccountUpdates` | `accountDownloadEnd` | initial load complete flag | End of initial snapshot |
 | `reqContractDetails` | `contractDetails` | timeZoneId, liquidHours, tradingHours | Once per conId |
+| `reqMktData` | `tickPrice` | Live FX rates for non-base currencies (IDEALPRO CASH pairs) | On FX tick |
 
-Single source of truth: `updatePortfolio` owns position data and valuation, `updateAccountValue` owns cash balance, `accountDownloadEnd` owns initial load completion.
+Single source of truth: `updatePortfolio` owns position data and local-currency valuation, `updateAccountValue` owns cash balance and base currency, `accountDownloadEnd` owns initial load completion. The projection layer converts local values to base currency using FX rates from live `reqMktData` subscriptions (with static `ExchangeRate` as fallback).
 
 **Cadence:**
 - Updates are event-driven, typically arriving on portfolio changes rather than at a fixed interval.
@@ -92,7 +93,7 @@ Pure utility that determines whether a market is open or closed at a given time,
 **Portfolio Modules (`src/broker/ibkr/portfolio/`):**
 
 - `createPortfolioSubscription.ts` — orchestrates event wiring between the IB API and the projection/tracker modules.
-- `portfolioProjection.ts` — pure state container that accumulates position updates, cash balance, and market hours into a `PortfolioUpdate` snapshot.
+- `portfolioProjection.ts` — pure state container that accumulates position updates, cash balance, FX rates, and market hours into a `PortfolioUpdate` snapshot. Converts per-position values to base currency and tracks pending FX state.
 - `contractDetailsTracker.ts` — deduplicates `reqContractDetails` requests and correlates responses back to contract IDs.
 - `types.ts` — adapter-boundary IB event types (`PortfolioApi`, `PortfolioEventMap`, `PortfolioContractSeed`, `ContractDetailsPayload`). Implementation-only types stay in file scope.
 
@@ -108,19 +109,33 @@ type AppState = {
 
   positions: Position[]
   positionsMarketValue: number
+  positionsUnrealizedPnL: number
   totalEquity: number
   cashBalance: number
+  cashBalancesByCurrency: Record<string, number>
+  cashExchangeRatesByCurrency: Record<string, number>
+  baseCurrencyCode: string | null
   initialLoadComplete: boolean
   lastPortfolioUpdateAt: number | null
+  positionsPendingFxCount: number
+  positionsPendingFxByCurrency: Record<string, number>
+
+  displayCurrencyPreference: "BASE" | string
+  displayCurrencyCode: string | null
+  availableDisplayCurrencies: string[]
+  displayCurrencyWarning: string | null
 
   connect: () => Promise<void>
   disconnect: () => Promise<void>
   subscribePortfolio: () => () => void
+  setDisplayCurrencyPreference: (preference: "BASE" | string) => void
+  cycleDisplayCurrency: (direction: "next" | "prev") => void
 }
 ```
 
 The store bridges broker events to React components. When `subscribePortfolio()` callback fires, it updates state, triggering component re-renders.
-The store also emits `state.snapshot` debug logs after applying portfolio updates, so emitted snapshots reflect UI-visible state instead of raw broker callbacks.
+The store also resolves display currency on each portfolio update (deriving available currencies from positions and cash, falling back to base with a warning if the preferred currency is not convertible).
+The store emits `state.snapshot` debug logs after applying portfolio updates, including base currency, display currency, and pending FX counts.
 
 UI components use selector-based Zustand subscriptions (`useStore((s) => s.field)`) to minimize re-renders.
 
@@ -130,16 +145,20 @@ UI components use selector-based Zustand subscriptions (`useStore((s) => s.field
 ### 4. TUI Components (`src/tui/`)
 
 **App.tsx** - Root component:
-- Keyboard handling: `c` to connect, `q` to quit
+- Keyboard handling: `c` to connect, `q` to quit, `[`/`]` to cycle display currency
 - Status indicator (green/yellow/red)
 - Renders `PortfolioView` when connected
 
 **PortfolioView.tsx** - Portfolio display:
 - Subscribes to portfolio updates on mount
-- Fixed-width column table layout
+- Fixed-width column table layout with CCY column showing each position's local currency
+- Non-base currency codes highlighted in yellow
 - Color-coded unrealized P&L (green positive, red negative)
 - Per-position `Mkt Hrs` column: color-coded countdown (green=open, yellow=closed) to next session transition
-- Shows positions, cash, and totals
+- Shows positions, cash, and totals (base-currency converted)
+- Positions with pending FX show "pending" for market value and blank % Port
+- Currency status line showing base currency, display currency (if different), and pending FX count
+- Warning line when display currency falls back to base
 - Recency indicator ("Updated X ago") with stale detection at 3 minutes
 
 ## Data Flow
@@ -156,10 +175,12 @@ UI components use selector-based Zustand subscriptions (`useStore((s) => s.field
 │                                                             │
 │  Subscriptions:                                             │
 │  └─ reqAccountUpdates → updatePortfolio (positions + values)│
-│                       → updateAccountValue (cash balance)   │
+│                       → updateAccountValue (cash, FX, base) │
 │                       → accountDownloadEnd (load complete)  │
 │  └─ reqContractDetails → contractDetails (market hours)     │
+│  └─ reqMktData (FX)   → tickPrice (live FX rates)          │
 │                                                             │
+│  Projection: converts local→base using FX, tracks pending   │
 │  Consolidates into PortfolioUpdate callback                 │
 └─────────────────────────┬───────────────────────────────────┘
                           │ callback(PortfolioUpdate)
@@ -168,7 +189,9 @@ UI components use selector-based Zustand subscriptions (`useStore((s) => s.field
 │                    Zustand Store                            │
 │                                                             │
 │  Updates: positions, positionsMarketValue,                  │
-│           totalEquity, cashBalance, lastPortfolioUpdateAt   │
+│           positionsUnrealizedPnL, totalEquity, cashBalance, │
+│           baseCurrencyCode, displayCurrency, pendingFx,     │
+│           lastPortfolioUpdateAt                             │
 └─────────────────────────┬───────────────────────────────────┘
                           │ State change triggers re-render
                           ▼
@@ -189,14 +212,18 @@ type Position = {
   symbol: string
   quantity: number
   avgCost: number
-  marketValue: number
-  unrealizedPnL: number
+  marketValue: number           // local currency
+  unrealizedPnL: number         // local currency
   dailyPnL: number
   realizedPnL: number
   marketPrice: number
   currency: string
   conId: number
   marketHours?: PositionMarketHours
+  marketValueBase: number | null       // base currency (null if FX pending)
+  unrealizedPnLBase: number | null     // base currency (null if FX pending)
+  fxRateToBase: number | null          // FX rate used (1 for base, null if pending)
+  isFxPending: boolean                 // true when FX rate not yet available
 }
 ```
 
@@ -204,11 +231,17 @@ type Position = {
 ```typescript
 type PortfolioUpdate = {
   positions: Position[]
-  positionsMarketValue: number
+  positionsMarketValue: number              // sum of non-null marketValueBase
+  positionsUnrealizedPnL: number            // sum of non-null unrealizedPnLBase
   totalEquity: number
   cashBalance: number
+  cashBalancesByCurrency: Record<string, number>
+  cashExchangeRatesByCurrency: Record<string, number>
+  baseCurrencyCode: string | null
   initialLoadComplete: boolean
   lastPortfolioUpdateAt: number
+  positionsPendingFxCount: number
+  positionsPendingFxByCurrency: Record<string, number>
 }
 ```
 
@@ -217,6 +250,7 @@ type PortfolioUpdate = {
 CLI flags:
 - `--log-file[=<path>]` - Enable file logging (default path: `logs/ibkr.log`)
 - `--log-level=<error|warn|info|debug>` - Minimum log severity (default: `info`)
+- `--portfolio-currency=<BASE|CCC>` - Set initial display currency preference (default: `BASE`)
 
 Environment variables:
 - `IBKR_HOST` - Gateway host (default: `127.0.0.1`)

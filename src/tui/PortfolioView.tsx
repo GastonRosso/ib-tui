@@ -8,6 +8,7 @@ const STALE_THRESHOLD_MS = 180_000;
 
 const COLUMNS = {
   ticker: 8,
+  ccy: 5,
   quantity: 8,
   price: 10,
   avgCost: 10,
@@ -53,6 +54,7 @@ const HeaderRow: React.FC = () => (
   <Box>
     <Text color="cyan" bold>
       {padRight("Ticker", COLUMNS.ticker)}
+      {padRight("CCY", COLUMNS.ccy)}
       {padLeft("Qty", COLUMNS.quantity)}
       {padLeft("Price", COLUMNS.price)}
       {padLeft("Avg Cost", COLUMNS.avgCost)}
@@ -74,6 +76,7 @@ const CashHeaderRow: React.FC = () => (
   <Box>
     <Text color="cyan" bold>
       {padRight("Curr", COLUMNS.ticker)}
+      {padRight("", COLUMNS.ccy)}
       {padLeft("", COLUMNS.quantity)}
       {padLeft("", COLUMNS.price)}
       {padLeft("", COLUMNS.avgCost)}
@@ -85,28 +88,36 @@ const CashHeaderRow: React.FC = () => (
   </Box>
 );
 
-const PositionRow: React.FC<{ position: Position; totalValue: number; nowMs: number }> = ({
+const PositionRow: React.FC<{ position: Position; totalValue: number; nowMs: number; baseCurrencyCode: string | null }> = ({
   position,
   totalValue,
   nowMs,
+  baseCurrencyCode,
 }) => {
-  const portfolioPct = totalValue > 0 ? (position.marketValue / totalValue) * 100 : 0;
+  const isNonBase = baseCurrencyCode !== null && position.currency !== baseCurrencyCode;
+  const isPending = position.isFxPending;
+  const displayMarketValue = isPending ? null : (position.marketValueBase ?? position.marketValue);
+  const portfolioPct = (!isPending && totalValue > 0 && displayMarketValue !== null)
+    ? (displayMarketValue / totalValue) * 100
+    : null;
   const mktHrs = resolveMarketHours(position.marketHours, nowMs);
   const countdownColor = mktHrs.status === "open" ? "green" : mktHrs.status === "closed" ? "yellow" : undefined;
   const nextLabel = formatMarketHoursCountdown(mktHrs);
+  const ccyColor = isNonBase ? "yellow" : undefined;
 
   return (
     <Box>
       <Text>{padRight(position.symbol, COLUMNS.ticker)}</Text>
+      <Text color={ccyColor}>{padRight(position.currency, COLUMNS.ccy)}</Text>
       <Text>{padLeft(formatNumber(position.quantity, 0), COLUMNS.quantity)}</Text>
       <Text>{padLeft(formatCurrency(position.marketPrice), COLUMNS.price)}</Text>
       <Text>{padLeft(formatCurrency(position.avgCost), COLUMNS.avgCost)}</Text>
       <Box width={COLUMNS.unrealizedPnL} justifyContent="flex-end">
         <PnLText value={position.unrealizedPnL} />
       </Box>
-      <Text>{padLeft(formatNumber(portfolioPct, 1) + "%", COLUMNS.portfolioPct)}</Text>
+      <Text>{padLeft(portfolioPct !== null ? formatNumber(portfolioPct, 1) + "%" : "", COLUMNS.portfolioPct)}</Text>
       <Text color={countdownColor}>{padLeft(nextLabel, COLUMNS.nextTransition)}</Text>
-      <Text>{padLeft(formatCurrency(position.marketValue), COLUMNS.marketValue)}</Text>
+      <Text>{padLeft(isPending ? "pending" : formatCurrency(displayMarketValue ?? 0), COLUMNS.marketValue)}</Text>
     </Box>
   );
 };
@@ -165,6 +176,7 @@ const CashRow: React.FC<{
   return (
     <Box>
       <Text dimColor>{padRight(holding.label, COLUMNS.ticker)}</Text>
+      <Text>{padRight("", COLUMNS.ccy)}</Text>
       <Text>{padLeft("", COLUMNS.quantity)}</Text>
       <Text>{padLeft("", COLUMNS.price)}</Text>
       <Text>{padLeft("", COLUMNS.avgCost)}</Text>
@@ -186,6 +198,7 @@ const SummaryRow: React.FC<{
   return (
     <Box marginTop={marginTop}>
       <Text bold>{padRight(label, COLUMNS.ticker)}</Text>
+      <Text>{padRight("", COLUMNS.ccy)}</Text>
       <Text>{padLeft("", COLUMNS.quantity)}</Text>
       <Text>{padLeft("", COLUMNS.price)}</Text>
       <Text>{padLeft("", COLUMNS.avgCost)}</Text>
@@ -225,6 +238,32 @@ const RecencyIndicator: React.FC<{ lastUpdateAt: number | null }> = ({ lastUpdat
   );
 };
 
+const CurrencyStatusLine: React.FC<{
+  baseCurrencyCode: string | null;
+  displayCurrencyCode: string | null;
+  pendingFxCount: number;
+}> = ({ baseCurrencyCode, displayCurrencyCode, pendingFxCount }) => {
+  if (!baseCurrencyCode) return null;
+
+  return (
+    <Box gap={2}>
+      <Text dimColor>
+        Base: <Text bold>{baseCurrencyCode}</Text>
+      </Text>
+      {displayCurrencyCode && displayCurrencyCode !== baseCurrencyCode && (
+        <Text dimColor>
+          Display: <Text bold>{displayCurrencyCode}</Text>
+        </Text>
+      )}
+      {pendingFxCount > 0 && (
+        <Text color="yellow">
+          {pendingFxCount} position{pendingFxCount > 1 ? "s" : ""} pending FX
+        </Text>
+      )}
+    </Box>
+  );
+};
+
 export const PortfolioView: React.FC = () => {
   const positions = useStore((s) => s.positions);
   const totalEquity = useStore((s) => s.totalEquity);
@@ -235,6 +274,11 @@ export const PortfolioView: React.FC = () => {
   const subscribePortfolio = useStore((s) => s.subscribePortfolio);
   const initialLoadComplete = useStore((s) => s.initialLoadComplete);
   const lastPortfolioUpdateAt = useStore((s) => s.lastPortfolioUpdateAt);
+  const positionsMarketValue = useStore((s) => s.positionsMarketValue);
+  const positionsUnrealizedPnL = useStore((s) => s.positionsUnrealizedPnL);
+  const displayCurrencyCode = useStore((s) => s.displayCurrencyCode);
+  const displayCurrencyWarning = useStore((s) => s.displayCurrencyWarning);
+  const positionsPendingFxCount = useStore((s) => s.positionsPendingFxCount);
 
   const [nowMs, setNowMs] = useState(Date.now());
 
@@ -254,9 +298,7 @@ export const PortfolioView: React.FC = () => {
     cashExchangeRatesByCurrency,
     baseCurrencyCode,
   );
-  const positionsValue = positions.reduce((sum, position) => sum + position.marketValue, 0);
-  const positionsUnrealizedPnL = positions.reduce((sum, position) => sum + position.unrealizedPnL, 0);
-  const positionsPortfolioPct = totalEquity > 0 ? (positionsValue / totalEquity) * 100 : 0;
+  const positionsPortfolioPct = totalEquity > 0 ? (positionsMarketValue / totalEquity) * 100 : 0;
 
   if (!initialLoadComplete) {
     return (
@@ -277,6 +319,16 @@ export const PortfolioView: React.FC = () => {
         </Text>
         <RecencyIndicator lastUpdateAt={lastPortfolioUpdateAt} />
       </Box>
+      <CurrencyStatusLine
+        baseCurrencyCode={baseCurrencyCode}
+        displayCurrencyCode={displayCurrencyCode}
+        pendingFxCount={positionsPendingFxCount}
+      />
+      {displayCurrencyWarning && (
+        <Box marginBottom={1}>
+          <Text color="yellow">{displayCurrencyWarning}</Text>
+        </Box>
+      )}
       <HeaderRow />
       <DividerRow />
       {positions.map((position) => (
@@ -285,12 +337,13 @@ export const PortfolioView: React.FC = () => {
           position={position}
           totalValue={totalEquity}
           nowMs={nowMs}
+          baseCurrencyCode={baseCurrencyCode}
         />
       ))}
       <DividerRow />
       <SummaryRow
         label="PORT TOT"
-        totalValue={positionsValue}
+        totalValue={positionsMarketValue}
         unrealizedPnL={positionsUnrealizedPnL}
         portfolioPct={positionsPortfolioPct}
         marginTop={0}

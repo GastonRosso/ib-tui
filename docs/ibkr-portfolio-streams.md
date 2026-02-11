@@ -18,6 +18,12 @@ On unsubscribe:
 
 1. `reqAccountUpdates(false, accountId)`
 
+Additionally, the subscription layer requests live FX rates for non-base currencies:
+
+1. `reqMktData(reqId, fxContract, ...)` — one per non-base currency observed in cash balances or position currencies (deduplicated).
+
+On unsubscribe, all FX market data subscriptions are cancelled via `cancelMktData(reqId)`.
+
 No other subscriptions (`reqPnL`, `reqPnLSingle`) are used in this simplified model.
 
 ## 2) Events Consumed and Fields Used
@@ -56,12 +62,26 @@ Consumed event payload:
 
 Used for:
 - Cash balance when `key === "TotalCashBalance"` and `currency === "BASE"`.
+- Per-currency cash balances when `key === "TotalCashBalance"` and `currency !== "BASE"`.
+- Base currency detection when `key === "TotalCashValue"` (the `currency` field identifies the account base currency).
+- Static exchange rates when `key === "ExchangeRate"` (used as fallback until live FX supersedes).
 
 ### `accountDownloadEnd` (from `reqAccountUpdates`)
 
 Used for:
 - Setting `initialLoadComplete = true`.
 - UI only renders the portfolio table after this flag is true.
+
+### `tickPrice` (from `reqMktData` — FX subscriptions)
+
+Consumed event payload:
+- `reqId` (correlated to FX subscription)
+- `field` (1=bid, 2=ask, 4=last, 37=mark)
+- `value` (price)
+
+Used for:
+- Live FX rate updates for non-base currencies. The midpoint of bid/ask is preferred; mark and last are used as fallback.
+- Rates are applied to the projection layer, which recomputes per-position base values and cash conversion.
 
 ### `contractDetails` / `contractDetailsEnd` (from `reqContractDetails`)
 
@@ -81,16 +101,30 @@ Used for:
 1. `updatePortfolio` owns:
    - `quantity`
    - `marketPrice`
-   - `marketValue`
-   - `unrealizedPnL`
+   - `marketValue` (local currency)
+   - `unrealizedPnL` (local currency)
    - `realizedPnL`
-   - static position metadata
-   - `positionsMarketValue` (sum of all position market values)
+   - static position metadata (`symbol`, `currency`, `conId`)
 2. `updateAccountValue` owns:
    - `cashBalance` (TotalCashBalance, BASE)
+   - `cashBalancesByCurrency` (TotalCashBalance, per currency)
+   - `baseCurrencyCode` (from TotalCashValue currency field)
+   - `exchangeRatesByCurrency` (static ExchangeRate values, used until live FX supersedes)
+3. `tickPrice` (FX subscriptions) owns:
+   - Live FX rates per non-base currency
+4. Projection layer derives:
+   - `marketValueBase` — local `marketValue * fxRate`, or `null` if FX pending
+   - `unrealizedPnLBase` — local `unrealizedPnL * fxRate`, or `null` if FX pending
+   - `fxRateToBase` — FX rate used (1 for base-currency positions, null if pending)
+   - `isFxPending` — true when no FX rate is available for the position's currency
+   - `positionsMarketValue` — sum of non-null `marketValueBase` values (base-currency denominated)
+   - `positionsUnrealizedPnL` — sum of non-null `unrealizedPnLBase` values
+   - `positionsPendingFxCount` — count of positions awaiting FX rates
+   - `positionsPendingFxByCurrency` — local-currency notional grouped by currency for pending positions
 
 Total equity computation:
 - `totalEquity = positionsMarketValue + cashBalance`
+- Positions with pending FX are excluded from `positionsMarketValue`.
 
 ## 4) Why This Model
 
@@ -140,7 +174,22 @@ Levels: `error`, `warn`, `info`, `debug`. Default: `info`. Broker events log at 
 
 See `docs/features/logs.md` for full logging documentation.
 
-## 8) Future Options
+## 8) FX Rate Sources and Precedence
+
+FX rates for converting non-base positions and cash to base currency are sourced in order:
+
+1. **Live FX** from `reqMktData` on IDEALPRO CASH pairs (bid/ask midpoint, or mark, or last).
+2. **Static `ExchangeRate`** from `updateAccountValue` events (used until live FX supersedes).
+
+FX subscriptions are triggered for any non-base currency observed in cash balances or position currencies, deduplicated by currency. Subscriptions are established after `accountDownloadEnd` and base currency detection.
+
+When a non-base position arrives before its FX rate:
+1. The position is marked `isFxPending = true`.
+2. Its `marketValueBase` and `unrealizedPnLBase` are `null`.
+3. It is excluded from `positionsMarketValue` totals.
+4. Once the FX rate arrives, the position is immediately converted and included in totals.
+
+## 9) Future Options
 
 1. **Real-time market data via `reqMktData`**: Can be reintroduced for near-1s valuation updates per position. This would enable chart rendering and smoother value movement.
 2. **Day P&L via `reqPnL`/`reqPnLSingle`**: Can be re-added for Day P&L columns in the table. These were removed to simplify the dashboard.

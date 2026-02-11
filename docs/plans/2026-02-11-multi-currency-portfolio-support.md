@@ -1,7 +1,15 @@
 # Multi-Currency Portfolio Support Implementation Plan
 
 ## Status
-Planned on 2026-02-11.
+Completed on 2026-02-11.
+Outcome:
+- All 8 implementation tasks completed across projection, subscription, store, CLI, keyboard, view, logging, and documentation layers.
+- Per-position FX conversion with pending state tracking implemented in the projection layer.
+- FX subscriptions extended to cover position currencies (deduplicated with cash currencies).
+- Display currency state with cycling and fallback-to-base logic added to store.
+- CLI flag `--portfolio-currency` and runtime `[`/`]` keybindings implemented.
+- PortfolioView updated with CCY column, pending FX rendering, currency status line, and warning line.
+- All 98 tests pass, typecheck clean, lint clean.
 
 ## Goal
 Support portfolios containing assets across multiple currencies by:
@@ -199,3 +207,10 @@ Run:
 - Pending FX positions are excluded from converted totals by design.
 - Display-currency list is dynamic and derived from currently observed currencies.
 - If display-currency conversion is unavailable, the UI falls back to base currency with warning text.
+
+## Completion Notes
+1. The `recomputePositionBaseValues()` function in the projection layer handles three triggers: position update, FX rate change, and base currency detection — ensuring consistent state across all paths.
+2. FX subscription deduplication works by tracking currencies from both `localCashCurrencies` and `positionCurrencies` sets, with `ensureFxSubscription()` checking the shared `fxReqIdByCurrency` map.
+3. Display currency cycling uses a sorted array of available currencies with modular arithmetic for wraparound.
+4. PR review feedback addressed: replaced non-null assertions with guard throws in tests, added missing mock fields to PortfolioView fixtures, and removed `Math.abs()` on pending FX aggregation to preserve sign for short positions.
+5. The replay test (`streamLogReplay.test.ts`) was updated to compute position sums using FX conversion, matching the new projection behavior.

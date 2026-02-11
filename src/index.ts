@@ -4,6 +4,8 @@ import React from "react";
 import { App } from "./tui/App.js";
 import { configureLogging, LOG_LEVELS } from "./utils/logger.js";
 import type { LogLevel } from "./utils/logger.js";
+import { parseCliArgs } from "./config/cliArgs.js";
+import { useStore } from "./state/store.js";
 
 const VALID_LEVELS = [...LOG_LEVELS];
 const VALID_LEVEL_SET: ReadonlySet<string> = new Set(LOG_LEVELS);
@@ -58,6 +60,17 @@ if (logFileArg) {
   }
 
   configureLogging({ filePath: logFile, level });
+}
+
+try {
+  const cliArgs = parseCliArgs(args);
+  if (cliArgs.portfolioCurrency) {
+    useStore.getState().setDisplayCurrencyPreference(cliArgs.portfolioCurrency);
+  }
+} catch (err) {
+  const message = err instanceof Error ? err.message : String(err);
+  process.stderr.write(`${message}\n`);
+  process.exit(1);
 }
 
 const { waitUntilExit } = render(React.createElement(App));

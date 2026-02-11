@@ -15,6 +15,7 @@ type PositionState = {
   quantity: number;
   marketValue: number;
   marketPrice: number;
+  currency: string;
 };
 
 type ReplayState = {
@@ -68,10 +69,22 @@ const toFiniteNumber = (value: string | undefined): number | null => {
   return Number.isFinite(parsed) ? parsed : null;
 };
 
-const sumPositions = (positions: Map<number, PositionState>): number => {
+const sumPositionsInBase = (
+  positions: Map<number, PositionState>,
+  baseCurrencyCode: string | null,
+  exchangeRates: Map<string, number>,
+): number => {
   let sum = 0;
   for (const position of positions.values()) {
-    sum += position.marketValue;
+    if (!baseCurrencyCode || position.currency === baseCurrencyCode) {
+      sum += position.marketValue;
+    } else {
+      const rate = exchangeRates.get(position.currency);
+      if (rate !== undefined) {
+        sum += position.marketValue * rate;
+      }
+      // Pending FX positions excluded from total (matches projection behavior)
+    }
   }
   return sum;
 };
@@ -208,7 +221,6 @@ describe("IBKR stream log replay", () => {
         const qty = toFiniteNumber(line.fields.qty);
         const marketPrice = toFiniteNumber(line.fields.mktPrice);
         const marketValue = toFiniteNumber(line.fields.mktValue);
-
         if (state.selectedAccount && account && account !== state.selectedAccount) {
           continue;
         }
@@ -221,10 +233,15 @@ describe("IBKR stream log replay", () => {
           continue;
         }
 
+        // Infer currency from contract details in the log line if available,
+        // otherwise default to base currency (most common case for single-currency accounts)
+        const currency = line.fields.ccy ?? state.baseCurrencyCode ?? "USD";
+
         state.positions.set(conId, {
           quantity: qty,
           marketValue,
           marketPrice,
+          currency,
         });
       }
 
@@ -297,7 +314,7 @@ describe("IBKR stream log replay", () => {
           continue;
         }
 
-        const expectedPositions = sumPositions(state.positions);
+        const expectedPositions = sumPositionsInBase(state.positions, state.baseCurrencyCode, state.exchangeRatesByCurrency);
         const expectedCashFx = sumConvertedCashInBase(state);
         const expectedTotal = expectedPositions + state.cashBalance;
 
