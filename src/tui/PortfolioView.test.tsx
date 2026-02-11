@@ -28,6 +28,10 @@ describe("PortfolioView", () => {
     marketPrice: 150.5,
     currency: "USD",
     conId: 265598,
+    marketValueBase: 15050,
+    unrealizedPnLBase: 550,
+    fxRateToBase: 1,
+    isFxPending: false,
     ...overrides,
   });
 
@@ -59,6 +63,7 @@ describe("PortfolioView", () => {
     brokerStatus: null,
     positions: [],
     positionsMarketValue: 0,
+    positionsUnrealizedPnL: 0,
     totalEquity: 0,
     cashBalance: 0,
     cashBalancesByCurrency: {},
@@ -66,11 +71,19 @@ describe("PortfolioView", () => {
     baseCurrencyCode: null,
     initialLoadComplete: true,
     lastPortfolioUpdateAt: Date.now(),
+    positionsPendingFxCount: 0,
+    positionsPendingFxByCurrency: {},
+    displayCurrencyPreference: "BASE",
+    displayCurrencyCode: null,
+    availableDisplayCurrencies: [],
+    displayCurrencyWarning: null,
     connect: async () => undefined,
     disconnect: async () => undefined,
     setConnectionStatus: () => {},
     setError: () => {},
     subscribePortfolio: mockSubscribe,
+    setDisplayCurrencyPreference: () => {},
+    cycleDisplayCurrency: () => {},
   });
 
   beforeEach(() => {

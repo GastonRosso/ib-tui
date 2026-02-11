@@ -79,11 +79,11 @@ describe("createPortfolioProjection", () => {
 
     const snapshot = projection.snapshot();
     const sap = snapshot.positions.find((p) => p.conId === 100);
-    expect(sap).toBeDefined();
-    expect(sap!.isFxPending).toBe(true);
-    expect(sap!.marketValueBase).toBeNull();
-    expect(sap!.unrealizedPnLBase).toBeNull();
-    expect(sap!.fxRateToBase).toBeNull();
+    if (!sap) throw new Error("expected SAP position");
+    expect(sap.isFxPending).toBe(true);
+    expect(sap.marketValueBase).toBeNull();
+    expect(sap.unrealizedPnLBase).toBeNull();
+    expect(sap.fxRateToBase).toBeNull();
     expect(snapshot.positionsMarketValue).toBe(0);
     expect(snapshot.positionsPendingFxCount).toBe(1);
     expect(snapshot.positionsPendingFxByCurrency).toEqual({ EUR: 10000 });
@@ -107,10 +107,11 @@ describe("createPortfolioProjection", () => {
 
     const snapshot = projection.snapshot();
     const sap = snapshot.positions.find((p) => p.conId === 100);
-    expect(sap!.isFxPending).toBe(false);
-    expect(sap!.marketValueBase).toBeCloseTo(11000, 6);
-    expect(sap!.unrealizedPnLBase).toBeCloseTo(1100, 6);
-    expect(sap!.fxRateToBase).toBeCloseTo(1.1, 6);
+    if (!sap) throw new Error("expected SAP position");
+    expect(sap.isFxPending).toBe(false);
+    expect(sap.marketValueBase).toBeCloseTo(11000, 6);
+    expect(sap.unrealizedPnLBase).toBeCloseTo(1100, 6);
+    expect(sap.fxRateToBase).toBeCloseTo(1.1, 6);
     expect(snapshot.positionsMarketValue).toBeCloseTo(11000, 6);
     expect(snapshot.positionsPendingFxCount).toBe(0);
     expect(snapshot.positionsPendingFxByCurrency).toEqual({});
@@ -163,10 +164,11 @@ describe("createPortfolioProjection", () => {
 
     const snapshot = projection.snapshot();
     const aapl = snapshot.positions.find((p) => p.conId === 1);
-    expect(aapl!.fxRateToBase).toBe(1);
-    expect(aapl!.isFxPending).toBe(false);
-    expect(aapl!.marketValueBase).toBe(15000);
-    expect(aapl!.unrealizedPnLBase).toBe(1000);
+    if (!aapl) throw new Error("expected AAPL position");
+    expect(aapl.fxRateToBase).toBe(1);
+    expect(aapl.isFxPending).toBe(false);
+    expect(aapl.marketValueBase).toBe(15000);
+    expect(aapl.unrealizedPnLBase).toBe(1000);
   });
 
   it("positions default to fxRate=1 when base currency is not yet known", () => {
@@ -183,9 +185,10 @@ describe("createPortfolioProjection", () => {
 
     const snapshot = projection.snapshot();
     const aapl = snapshot.positions.find((p) => p.conId === 1);
-    expect(aapl!.fxRateToBase).toBe(1);
-    expect(aapl!.isFxPending).toBe(false);
-    expect(aapl!.marketValueBase).toBe(15000);
+    if (!aapl) throw new Error("expected AAPL position");
+    expect(aapl.fxRateToBase).toBe(1);
+    expect(aapl.isFxPending).toBe(false);
+    expect(aapl.marketValueBase).toBe(15000);
   });
 
   it("includes positionsUnrealizedPnL in snapshot", () => {

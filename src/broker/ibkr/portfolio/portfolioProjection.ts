@@ -98,7 +98,7 @@ const recomputePositionBaseValues = (state: PortfolioState): void => {
     } else {
       pendingFxCount++;
       const existing = pendingFxByCurrency.get(currency) ?? 0;
-      pendingFxByCurrency.set(currency, existing + Math.abs(position.marketValue));
+      pendingFxByCurrency.set(currency, existing + position.marketValue);
     }
 
     if (unrealizedPnLBase !== null) {
