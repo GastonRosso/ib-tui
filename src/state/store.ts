@@ -26,6 +26,7 @@ export type AppState = {
 
   displayCurrencyPreference: DisplayCurrencyPreference;
   displayCurrencyCode: string | null;
+  displayFxRate: number;
   availableDisplayCurrencies: string[];
   displayCurrencyWarning: string | null;
 
@@ -80,20 +81,24 @@ const resolveDisplayCurrency = (
   baseCurrencyCode: string | null,
   available: string[],
   exchangeRates: Record<string, number>,
-): { code: string | null; warning: string | null } => {
-  if (!baseCurrencyCode) return { code: null, warning: null };
+): { code: string | null; warning: string | null; displayFxRate: number } => {
+  if (!baseCurrencyCode) return { code: null, warning: null, displayFxRate: 1 };
 
   if (preference === "BASE" || preference === baseCurrencyCode) {
-    return { code: baseCurrencyCode, warning: null };
+    return { code: baseCurrencyCode, warning: null, displayFxRate: 1 };
   }
 
-  if (available.includes(preference) && (preference === baseCurrencyCode || exchangeRates[preference] !== undefined)) {
-    return { code: preference, warning: null };
+  const fxRate = exchangeRates[preference];
+  if (available.includes(preference) && fxRate !== undefined) {
+    // displayFxRate converts from base→display: divide base values by this FX rate.
+    // exchangeRates maps currency→base (e.g. EUR→USD = 1.1), so base→EUR = 1/1.1.
+    return { code: preference, warning: null, displayFxRate: 1 / fxRate };
   }
 
   return {
     code: baseCurrencyCode,
     warning: `Display currency ${preference} is not available, showing ${baseCurrencyCode}`,
+    displayFxRate: 1,
   };
 };
 
@@ -132,6 +137,7 @@ export const useStore = create<AppState>((set, get) => {
 
     displayCurrencyPreference: "BASE",
     displayCurrencyCode: null,
+    displayFxRate: 1,
     availableDisplayCurrencies: [],
     displayCurrencyWarning: null,
 
@@ -170,6 +176,7 @@ export const useStore = create<AppState>((set, get) => {
               at: Date.now(),
             },
             displayCurrencyCode: null,
+            displayFxRate: 1,
             availableDisplayCurrencies: [],
             displayCurrencyWarning: null,
           });
@@ -212,6 +219,7 @@ export const useStore = create<AppState>((set, get) => {
         error: null,
         brokerStatus: null,
         displayCurrencyCode: null,
+        displayFxRate: 1,
         availableDisplayCurrencies: [],
         displayCurrencyWarning: null,
       });
@@ -222,20 +230,24 @@ export const useStore = create<AppState>((set, get) => {
 
     setDisplayCurrencyPreference: (preference) => {
       const { baseCurrencyCode, availableDisplayCurrencies, cashExchangeRatesByCurrency } = get();
-      const { code, warning } = resolveDisplayCurrency(preference, baseCurrencyCode, availableDisplayCurrencies, cashExchangeRatesByCurrency);
+      const { code, warning, displayFxRate } = resolveDisplayCurrency(preference, baseCurrencyCode, availableDisplayCurrencies, cashExchangeRatesByCurrency);
       set({
         displayCurrencyPreference: preference,
         displayCurrencyCode: code,
+        displayFxRate,
         displayCurrencyWarning: warning,
       });
     },
 
     cycleDisplayCurrency: (direction) => {
-      const { availableDisplayCurrencies, displayCurrencyCode, baseCurrencyCode, cashExchangeRatesByCurrency } = get();
+      const { availableDisplayCurrencies, displayCurrencyPreference, baseCurrencyCode, cashExchangeRatesByCurrency } = get();
       if (availableDisplayCurrencies.length === 0) return;
 
-      const currentIndex = displayCurrencyCode
-        ? availableDisplayCurrencies.indexOf(displayCurrencyCode)
+      // Use the preference (not the resolved code) as cursor to avoid getting
+      // stuck when the current preference resolves to base via fallback.
+      const cursorCurrency = displayCurrencyPreference === "BASE" ? baseCurrencyCode : displayCurrencyPreference;
+      const currentIndex = cursorCurrency
+        ? availableDisplayCurrencies.indexOf(cursorCurrency)
         : -1;
 
       let nextIndex: number;
@@ -249,10 +261,11 @@ export const useStore = create<AppState>((set, get) => {
 
       const nextCurrency = availableDisplayCurrencies[nextIndex];
       const preference = nextCurrency === baseCurrencyCode ? "BASE" : nextCurrency;
-      const { code, warning } = resolveDisplayCurrency(preference, baseCurrencyCode, availableDisplayCurrencies, cashExchangeRatesByCurrency);
+      const { code, warning, displayFxRate } = resolveDisplayCurrency(preference, baseCurrencyCode, availableDisplayCurrencies, cashExchangeRatesByCurrency);
       set({
         displayCurrencyPreference: preference,
         displayCurrencyCode: code,
+        displayFxRate,
         displayCurrencyWarning: warning,
       });
     },
@@ -272,7 +285,7 @@ export const useStore = create<AppState>((set, get) => {
           prev.lastPortfolioUpdateAt !== update.lastPortfolioUpdateAt;
 
         const available = deriveAvailableDisplayCurrencies(update);
-        const { code, warning } = resolveDisplayCurrency(
+        const { code, warning, displayFxRate } = resolveDisplayCurrency(
           prev.displayCurrencyPreference,
           update.baseCurrencyCode,
           available,
@@ -294,6 +307,7 @@ export const useStore = create<AppState>((set, get) => {
           positionsPendingFxByCurrency: update.positionsPendingFxByCurrency,
           availableDisplayCurrencies: available,
           displayCurrencyCode: code,
+          displayFxRate,
           displayCurrencyWarning: warning,
         });
 

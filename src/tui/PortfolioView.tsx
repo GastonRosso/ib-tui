@@ -88,15 +88,18 @@ const CashHeaderRow: React.FC = () => (
   </Box>
 );
 
-const PositionRow: React.FC<{ position: Position; totalValue: number; nowMs: number; baseCurrencyCode: string | null }> = ({
+const PositionRow: React.FC<{ position: Position; totalValue: number; nowMs: number; baseCurrencyCode: string | null; displayFxRate: number }> = ({
   position,
   totalValue,
   nowMs,
   baseCurrencyCode,
+  displayFxRate,
 }) => {
   const isNonBase = baseCurrencyCode !== null && position.currency !== baseCurrencyCode;
   const isPending = position.isFxPending;
-  const displayMarketValue = isPending ? null : (position.marketValueBase ?? position.marketValue);
+  const baseValue = isPending ? null : (position.marketValueBase ?? position.marketValue);
+  const displayMarketValue = baseValue !== null ? baseValue * displayFxRate : null;
+  const displayUnrealizedPnL = isPending ? position.unrealizedPnL : ((position.unrealizedPnLBase ?? position.unrealizedPnL) * displayFxRate);
   const portfolioPct = (!isPending && totalValue > 0 && displayMarketValue !== null)
     ? (displayMarketValue / totalValue) * 100
     : null;
@@ -113,7 +116,7 @@ const PositionRow: React.FC<{ position: Position; totalValue: number; nowMs: num
       <Text>{padLeft(formatCurrency(position.marketPrice), COLUMNS.price)}</Text>
       <Text>{padLeft(formatCurrency(position.avgCost), COLUMNS.avgCost)}</Text>
       <Box width={COLUMNS.unrealizedPnL} justifyContent="flex-end">
-        <PnLText value={position.unrealizedPnL} />
+        <PnLText value={displayUnrealizedPnL} />
       </Box>
       <Text>{padLeft(portfolioPct !== null ? formatNumber(portfolioPct, 1) + "%" : "", COLUMNS.portfolioPct)}</Text>
       <Text color={countdownColor}>{padLeft(nextLabel, COLUMNS.nextTransition)}</Text>
@@ -163,11 +166,13 @@ const deriveCashHoldings = (
 
 const CashRow: React.FC<{
   holding: CashHolding;
+  displayFxRate: number;
 }> = ({
   holding,
+  displayFxRate,
 }) => {
-  const displayValue = formatCurrency(holding.value);
-  const displayFxRate = holding.isBaseCurrency
+  const displayValue = formatCurrency(holding.value * displayFxRate);
+  const fxRateLabel = holding.isBaseCurrency
     ? ""
     : holding.fxRate === null
       ? "n/a"
@@ -182,7 +187,7 @@ const CashRow: React.FC<{
       <Text>{padLeft("", COLUMNS.avgCost)}</Text>
       <Text>{padLeft("", COLUMNS.unrealizedPnL)}</Text>
       <Text>{padLeft("", COLUMNS.portfolioPct)}</Text>
-      <Text>{padLeft(displayFxRate, COLUMNS.nextTransition)}</Text>
+      <Text>{padLeft(fxRateLabel, COLUMNS.nextTransition)}</Text>
       <Text>{padLeft(displayValue, COLUMNS.marketValue)}</Text>
     </Box>
   );
@@ -279,6 +284,7 @@ export const PortfolioView: React.FC = () => {
   const displayCurrencyCode = useStore((s) => s.displayCurrencyCode);
   const displayCurrencyWarning = useStore((s) => s.displayCurrencyWarning);
   const positionsPendingFxCount = useStore((s) => s.positionsPendingFxCount);
+  const displayFxRate = useStore((s) => s.displayFxRate);
 
   const [nowMs, setNowMs] = useState(Date.now());
 
@@ -298,7 +304,11 @@ export const PortfolioView: React.FC = () => {
     cashExchangeRatesByCurrency,
     baseCurrencyCode,
   );
-  const positionsPortfolioPct = totalEquity > 0 ? (positionsMarketValue / totalEquity) * 100 : 0;
+  const displayPositionsMV = positionsMarketValue * displayFxRate;
+  const displayPositionsPnL = positionsUnrealizedPnL * displayFxRate;
+  const displayCashBalance = cashBalance * displayFxRate;
+  const displayTotalEquity = totalEquity * displayFxRate;
+  const positionsPortfolioPct = displayTotalEquity > 0 ? (displayPositionsMV / displayTotalEquity) * 100 : 0;
 
   if (!initialLoadComplete) {
     return (
@@ -335,16 +345,17 @@ export const PortfolioView: React.FC = () => {
         <PositionRow
           key={position.conId}
           position={position}
-          totalValue={totalEquity}
+          totalValue={displayTotalEquity}
           nowMs={nowMs}
           baseCurrencyCode={baseCurrencyCode}
+          displayFxRate={displayFxRate}
         />
       ))}
       <DividerRow />
       <SummaryRow
         label="PORT TOT"
-        totalValue={positionsMarketValue}
-        unrealizedPnL={positionsUnrealizedPnL}
+        totalValue={displayPositionsMV}
+        unrealizedPnL={displayPositionsPnL}
         portfolioPct={positionsPortfolioPct}
         marginTop={0}
       />
@@ -362,12 +373,13 @@ export const PortfolioView: React.FC = () => {
             <CashRow
               key={holding.label}
               holding={holding}
+              displayFxRate={displayFxRate}
             />
           ))}
           <DividerRow />
           <SummaryRow
             label="CASH TOT"
-            totalValue={cashBalance}
+            totalValue={displayCashBalance}
             unrealizedPnL={null}
             portfolioPct={null}
             marginTop={0}
@@ -376,7 +388,7 @@ export const PortfolioView: React.FC = () => {
       )}
       <SummaryRow
         label="TOTAL"
-        totalValue={totalEquity}
+        totalValue={displayTotalEquity}
         unrealizedPnL={null}
         portfolioPct={null}
         marginTop={0}

@@ -74,6 +74,7 @@ describe("store", () => {
       positionsPendingFxByCurrency: {},
       displayCurrencyPreference: "BASE",
       displayCurrencyCode: null,
+      displayFxRate: 1,
       availableDisplayCurrencies: [],
       displayCurrencyWarning: null,
     });
@@ -202,6 +203,36 @@ describe("store", () => {
       // USD -> GBP (prev)
       cycleDisplayCurrency("prev");
       expect(useStore.getState().displayCurrencyCode).toBe("GBP");
+    });
+
+    it("advances past unavailable currencies when cycling", () => {
+      // EUR has no FX rate, JPY has FX rate. Cycling from USD should advance
+      // to EUR (preference), then next cycle should advance to JPY (not get stuck on EUR).
+      useStore.setState({
+        baseCurrencyCode: "USD",
+        availableDisplayCurrencies: ["EUR", "JPY", "USD"],
+        displayCurrencyCode: "USD",
+        displayCurrencyPreference: "BASE",
+        cashExchangeRatesByCurrency: { JPY: 0.0067, USD: 1 },
+        // Note: no EUR FX rate
+      });
+
+      const { cycleDisplayCurrency } = useStore.getState();
+
+      // USD -> EUR (next): EUR is unavailable, falls back to USD display but preference is EUR
+      cycleDisplayCurrency("next");
+      expect(useStore.getState().displayCurrencyPreference).toBe("EUR");
+      expect(useStore.getState().displayCurrencyCode).toBe("USD"); // fallback
+
+      // EUR -> JPY (next): JPY IS available
+      cycleDisplayCurrency("next");
+      expect(useStore.getState().displayCurrencyPreference).toBe("JPY");
+      expect(useStore.getState().displayCurrencyCode).toBe("JPY");
+
+      // JPY -> USD (next)
+      cycleDisplayCurrency("next");
+      expect(useStore.getState().displayCurrencyPreference).toBe("BASE");
+      expect(useStore.getState().displayCurrencyCode).toBe("USD");
     });
 
     it("falls back to base when preferred currency is not convertible", () => {
