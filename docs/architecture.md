@@ -97,6 +97,8 @@ Pure utility that determines whether a market is open or closed at a given time,
 - `contractDetailsTracker.ts` — deduplicates `reqContractDetails` requests and correlates responses back to contract IDs.
 - `types.ts` — adapter-boundary IB event types (`PortfolioApi`, `PortfolioEventMap`, `PortfolioContractSeed`, `ContractDetailsPayload`). Implementation-only types stay in file scope.
 
+For full multi-currency behavior, usage, and troubleshooting, see [`docs/features/multi-currency-portfolio.md`](features/multi-currency-portfolio.md).
+
 ### 3. State Management (`src/state/store.ts`)
 
 Zustand store with single broker instance:
