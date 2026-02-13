@@ -375,7 +375,7 @@ describe("IBKRBroker", () => {
       mockApi.emit(EventName.updateAccountValue, "TotalCashBalance", "1600.75", "BASE", "DU123456");
 
       const lastCall = callback.mock.calls.at(-1)?.[0];
-      expect(lastCall.cashBalance).toBe(1600.75);
+      expect(lastCall.cashBalance).toBeCloseTo(1620.8, 6);
       expect(lastCall.cashBalancesByCurrency).toEqual({
         EUR: 420.3,
         USD: 1200.5,

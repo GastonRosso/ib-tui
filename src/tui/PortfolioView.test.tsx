@@ -473,6 +473,8 @@ describe("PortfolioView", () => {
         cashBalancesByCurrency: { EUR: 500, USD: 1500 },
         cashExchangeRatesByCurrency: { EUR: 1.2, USD: 1 },
         baseCurrencyCode: "USD",
+        displayCurrencyCode: "USD",
+        displayFxRate: 1,
         subscribePortfolio: mockSubscribe,
         initialLoadComplete: true,
         lastPortfolioUpdateAt: Date.now(),
@@ -494,6 +496,36 @@ describe("PortfolioView", () => {
     expect(frame).toContain("1.2000");
     expect(frame).toContain("500.00");
     expect(frame).toContain("1,500.00");
+  });
+
+  it("shows cash FX rates against display currency and hides display-currency row rate", () => {
+    const displayFxRate = 1 / 1.1;
+    mockUseStore.mockImplementation((selector) => {
+      const state: AppState = {
+        ...createBaseState(),
+        positions: [createMockPosition()],
+        totalEquity: 17050,
+        cashBalance: 2000,
+        cashBalancesByCurrency: { EUR: 500, USD: 1500 },
+        cashExchangeRatesByCurrency: { EUR: 1.1, USD: 1 },
+        baseCurrencyCode: "USD",
+        displayCurrencyCode: "EUR",
+        displayFxRate,
+        subscribePortfolio: mockSubscribe,
+        initialLoadComplete: true,
+        lastPortfolioUpdateAt: Date.now(),
+      };
+      return selector ? selector(state) : state;
+    });
+
+    const { lastFrame } = render(<PortfolioView />);
+    const frame = lastFrame() ?? "";
+
+    // USD->EUR shown when display is EUR.
+    expect(frame).toContain("0.9091");
+
+    // Display-currency row (EUR) should not show self-rate.
+    expect(frame).not.toContain("1.0000");
   });
 
   it("renders an extra divider between assets and cash holdings", () => {

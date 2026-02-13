@@ -21,8 +21,7 @@ type PositionState = {
 type ReplayState = {
   selectedAccount: string;
   positions: Map<number, PositionState>;
-  cashBalance: number;
-  hasBaseCashBalance: boolean;
+  brokerCashBalance: number;
   baseCurrencyCode: string | null;
   localCashBalancesByCurrency: Map<string, number>;
   exchangeRatesByCurrency: Map<string, number>;
@@ -95,13 +94,10 @@ const computeConvertedCashBreakdown = (state: ReplayState): {
 } => {
   const baseCurrencyCode = state.baseCurrencyCode;
   const rawByCurrency = new Map<string, number>();
-  let rawNonBaseTotal = 0;
-  let baseCurrencyLocalAmount = 0;
   let allConvertible = true;
 
   for (const [currency, localAmount] of state.localCashBalancesByCurrency.entries()) {
     if (baseCurrencyCode && currency === baseCurrencyCode) {
-      baseCurrencyLocalAmount = localAmount;
       rawByCurrency.set(currency, localAmount);
       continue;
     }
@@ -114,21 +110,11 @@ const computeConvertedCashBreakdown = (state: ReplayState): {
 
     const rawValueInBase = localAmount * exchangeRate;
     rawByCurrency.set(currency, rawValueInBase);
-    rawNonBaseTotal += rawValueInBase;
-  }
-
-  let nonBaseScale = 1;
-  if (state.hasBaseCashBalance && baseCurrencyCode && rawNonBaseTotal > 0) {
-    const targetNonBaseInBase = Math.max(0, state.cashBalance - baseCurrencyLocalAmount);
-    nonBaseScale = targetNonBaseInBase / rawNonBaseTotal;
   }
 
   const rows: Array<[string, number]> = [];
   for (const [currency, rawValueInBase] of rawByCurrency.entries()) {
-    const value = baseCurrencyCode && currency !== baseCurrencyCode
-      ? rawValueInBase * nonBaseScale
-      : rawValueInBase;
-    rows.push([currency, value]);
+    rows.push([currency, rawValueInBase]);
   }
   rows.sort(([a], [b]) => a.localeCompare(b));
   return { rows, allConvertible };
@@ -163,8 +149,7 @@ describe("IBKR stream log replay", () => {
     const createInitialState = (): ReplayState => ({
       selectedAccount: "",
       positions: new Map(),
-      cashBalance: 0,
-      hasBaseCashBalance: false,
+      brokerCashBalance: 0,
       baseCurrencyCode: null,
       localCashBalancesByCurrency: new Map(),
       exchangeRatesByCurrency: new Map(),
@@ -175,7 +160,6 @@ describe("IBKR stream log replay", () => {
 
     const failures: string[] = [];
     const absTol = 0.05;
-    const cashConsistencyTol = 0.25;
 
     let sawPnlSubscription = false;
     let sawPnlSingleSubscription = false;
@@ -257,8 +241,7 @@ describe("IBKR stream log replay", () => {
 
         if (key === "TotalCashBalance") {
           if (currency === "BASE") {
-            state.cashBalance = value;
-            state.hasBaseCashBalance = true;
+            state.brokerCashBalance = value;
           } else if (currency) {
             state.localCashBalancesByCurrency.set(currency, value);
             sawNonBaseCashBalance = true;
@@ -316,7 +299,10 @@ describe("IBKR stream log replay", () => {
 
         const expectedPositions = sumPositionsInBase(state.positions, state.baseCurrencyCode, state.exchangeRatesByCurrency);
         const expectedCashFx = sumConvertedCashInBase(state);
-        const expectedTotal = expectedPositions + state.cashBalance;
+        const expectedCash = state.localCashBalancesByCurrency.size > 0
+          ? expectedCashFx
+          : state.brokerCashBalance;
+        const expectedTotal = expectedPositions + expectedCash;
 
         if (Math.abs(expectedPositions - emittedPositions) > absTol) {
           failures.push(
@@ -324,9 +310,9 @@ describe("IBKR stream log replay", () => {
           );
         }
 
-        if (Math.abs(state.cashBalance - emittedCash) > absTol) {
+        if (Math.abs(expectedCash - emittedCash) > absTol) {
           failures.push(
-            `[session=${session} line=${line.lineNo}] [emit mismatch] cash expected=${state.cashBalance.toFixed(2)} emitted=${emittedCash.toFixed(2)} t=${line.timeMs}`
+            `[session=${session} line=${line.lineNo}] [emit mismatch] cash expected=${expectedCash.toFixed(2)} emitted=${emittedCash.toFixed(2)} t=${line.timeMs}`
           );
         }
 
@@ -349,17 +335,6 @@ describe("IBKR stream log replay", () => {
               `[session=${session} line=${line.lineNo}] [emit mismatch] cashFxRows expected=${expectedRows} emitted=${emittedCashFxRows} t=${line.timeMs}`
             );
           }
-        }
-
-        if (
-          state.localCashBalancesByCurrency.size > 0 &&
-          computeConvertedCashBreakdown(state).allConvertible &&
-          state.hasBaseCashBalance &&
-          Math.abs(expectedCashFx - emittedCash) > cashConsistencyTol
-        ) {
-          failures.push(
-            `[session=${session} line=${line.lineNo}] [consistency] converted cash (${expectedCashFx.toFixed(2)}) differs from BASE cash (${emittedCash.toFixed(2)}) t=${line.timeMs}`
-          );
         }
       }
     }

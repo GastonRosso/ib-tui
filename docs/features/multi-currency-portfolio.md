@@ -53,7 +53,9 @@ Invalid values fail fast with a startup error.
 
 - Cash rows are grouped by currency.
 - `Mkt Value` is rendered in display currency.
-- `FX Rate` shows conversion used for non-base rows (`n/a` when unavailable).
+- `FX Rate` is shown as `row currency -> display currency`.
+- The display-currency row intentionally hides its own FX rate.
+- Missing conversion paths show `n/a`.
 
 ### Totals
 
@@ -71,6 +73,9 @@ Internal portfolio totals are maintained in base currency:
 - `positionsUnrealizedPnL`
 - `cashBalance`
 - `totalEquity`
+
+Cash valuation uses FX-converted per-currency local balances as the primary source of truth.
+Broker `TotalCashBalance` in `BASE` is kept only as a fallback when per-currency cash rows are not available yet.
 
 Display currency is a view transform applied at render time:
 - `displayValue = baseValue * displayFxRate`

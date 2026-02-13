@@ -23,7 +23,7 @@ describe("createPortfolioProjection", () => {
     expect(snapshot.totalEquity).toBe(20050);
   });
 
-  it("tracks per-currency cash balances separately from BASE total", () => {
+  it("tracks per-currency cash balances using FX-converted local cash", () => {
     const projection = createPortfolioProjection();
 
     projection.applyCashBalance("USD", "1500.25");
@@ -33,7 +33,7 @@ describe("createPortfolioProjection", () => {
     projection.applyCashBalance("BASE", "2300.35");
 
     const snapshot = projection.snapshot();
-    expect(snapshot.cashBalance).toBe(2300.35);
+    expect(snapshot.cashBalance).toBeCloseTo(2340.37, 6);
     expect(snapshot.cashBalancesByCurrency).toEqual({
       EUR: 840.12,
       USD: 1500.25,
@@ -44,7 +44,7 @@ describe("createPortfolioProjection", () => {
     });
   });
 
-  it("reconciles non-base converted cash against BASE total when base currency is known", () => {
+  it("uses FX-converted local cash directly instead of reconciling to BASE total", () => {
     const projection = createPortfolioProjection();
 
     projection.setBaseCurrency("USD");
@@ -55,13 +55,16 @@ describe("createPortfolioProjection", () => {
     projection.applyCashBalance("BASE", "1449.7667");
 
     const snapshot = projection.snapshot();
-    expect(snapshot.cashBalance).toBeCloseTo(1449.7667, 6);
+    expect(snapshot.cashBalance).toBeCloseTo(1451.105883849, 6);
     expect(snapshot.cashBalancesByCurrency.USD).toBeCloseTo(34.69, 6);
-    expect(snapshot.cashBalancesByCurrency.EUR).toBeCloseTo(1415.0767, 4);
+    expect(snapshot.cashBalancesByCurrency.EUR).toBeCloseTo(1416.415883849, 6);
     expect(snapshot.cashExchangeRatesByCurrency.EUR).toBeCloseTo(1.1906957, 6);
     expect(snapshot.baseCurrencyCode).toBe("USD");
-    const convertedTotal = Object.values(snapshot.cashBalancesByCurrency).reduce((sum, value) => sum + value, 0);
-    expect(convertedTotal).toBeCloseTo(snapshot.cashBalance, 6);
+
+    projection.applyExchangeRate("EUR", "1.2000000");
+    const afterFxMove = projection.snapshot();
+    expect(afterFxMove.cashBalancesByCurrency.EUR).toBeCloseTo(1427.484, 3);
+    expect(afterFxMove.cashBalance).toBeCloseTo(1462.174, 3);
   });
 
   it("marks EUR position as pending before FX arrives in USD-base account", () => {

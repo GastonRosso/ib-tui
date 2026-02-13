@@ -93,11 +93,11 @@ export type PortfolioState = {
   positionsMarketValue: number;
   positionsUnrealizedPnL: number;
   cashBalance: number;
+  brokerCashBalance: number | null;
   cashBalancesByCurrency: Map<string, number>;
   localCashBalancesByCurrency: Map<string, number>;
   exchangeRatesByCurrency: Map<string, number>;
   baseCurrencyCode: string | null;
-  hasBaseCashBalance: boolean;
   initialLoadComplete: boolean;
   lastPortfolioUpdateAt: number;
   positionsPendingFxCount: number;

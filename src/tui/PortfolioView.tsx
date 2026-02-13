@@ -156,8 +156,38 @@ const PositionRow: React.FC<{ position: Position; totalValue: number; nowMs: num
 type CashHolding = {
   label: string;
   value: number;
-  fxRate: number | null;
-  isBaseCurrency: boolean;
+  fxRateToDisplay: number | null;
+  hideFxRate: boolean;
+};
+
+const resolveRateToBase = (
+  currency: string,
+  baseCurrencyCode: string | null,
+  cashExchangeRatesByCurrency: Record<string, number>,
+): number | null => {
+  if (!baseCurrencyCode) return null;
+  if (currency === baseCurrencyCode) return 1;
+  const rate = cashExchangeRatesByCurrency[currency];
+  return rate === undefined ? null : rate;
+};
+
+const resolveRateToDisplay = (
+  currency: string,
+  displayCurrencyCode: string | null,
+  baseCurrencyCode: string | null,
+  cashExchangeRatesByCurrency: Record<string, number>,
+): { hideFxRate: boolean; fxRateToDisplay: number | null } => {
+  if (!displayCurrencyCode || currency === displayCurrencyCode) {
+    return { hideFxRate: true, fxRateToDisplay: null };
+  }
+
+  const sourceToBase = resolveRateToBase(currency, baseCurrencyCode, cashExchangeRatesByCurrency);
+  const displayToBase = resolveRateToBase(displayCurrencyCode, baseCurrencyCode, cashExchangeRatesByCurrency);
+  if (sourceToBase === null || displayToBase === null || displayToBase <= 0) {
+    return { hideFxRate: false, fxRateToDisplay: null };
+  }
+
+  return { hideFxRate: false, fxRateToDisplay: sourceToBase / displayToBase };
 };
 
 const deriveCashHoldings = (
@@ -165,29 +195,25 @@ const deriveCashHoldings = (
   cashBalancesByCurrency: Record<string, number>,
   cashExchangeRatesByCurrency: Record<string, number>,
   baseCurrencyCode: string | null,
+  displayCurrencyCode: string | null,
 ): CashHolding[] => {
   const perCurrency = Object.entries(cashBalancesByCurrency)
     .filter(([currency]) => currency && currency !== "BASE")
     .sort(([a], [b]) => a.localeCompare(b))
-    .map(([currency, value]) => {
-      const isBaseCurrency = baseCurrencyCode !== null && currency === baseCurrencyCode;
-      return {
-        label: currency,
-        value,
-        fxRate: isBaseCurrency ? null : cashExchangeRatesByCurrency[currency] ?? null,
-        isBaseCurrency,
-      };
-    });
+    .map(([currency, value]) => ({
+      label: currency,
+      value,
+      ...resolveRateToDisplay(currency, displayCurrencyCode, baseCurrencyCode, cashExchangeRatesByCurrency),
+    }));
 
   if (perCurrency.length > 0) return perCurrency;
   if (cashBalance === 0) return [];
 
   return [
-    {
+    { 
       label: baseCurrencyCode ?? "BASE",
       value: cashBalance,
-      fxRate: null,
-      isBaseCurrency: true,
+      ...resolveRateToDisplay(baseCurrencyCode ?? "BASE", displayCurrencyCode, baseCurrencyCode, cashExchangeRatesByCurrency),
     },
   ];
 };
@@ -202,11 +228,11 @@ const CashRow: React.FC<{
   displayCurrencyCode,
 }) => {
   const displayValue = formatMoney(holding.value * displayFxRate, displayCurrencyCode);
-  const fxRateLabel = holding.isBaseCurrency
+  const fxRateLabel = holding.hideFxRate
     ? ""
-    : holding.fxRate === null
+    : holding.fxRateToDisplay === null
       ? "n/a"
-      : formatNumber(holding.fxRate, 4);
+      : formatNumber(holding.fxRateToDisplay, 4);
 
   return (
     <Box>
@@ -334,6 +360,7 @@ export const PortfolioView: React.FC = () => {
     cashBalancesByCurrency,
     cashExchangeRatesByCurrency,
     baseCurrencyCode,
+    displayCurrencyCode,
   );
   const displayPositionsMV = positionsMarketValue * displayFxRate;
   const displayPositionsPnL = positionsUnrealizedPnL * displayFxRate;

@@ -21,40 +21,27 @@ const recomputeCashBalancesInBase = (state: PortfolioState): void => {
   state.cashBalancesByCurrency.clear();
 
   const baseCurrencyCode = state.baseCurrencyCode;
-  const hasBaseCashBalance = state.hasBaseCashBalance;
-  const rawByCurrency = new Map<string, number>();
-  let rawNonBaseTotal = 0;
-  let baseCurrencyLocalAmount = 0;
+  let total = 0;
 
   for (const [currency, localAmount] of state.localCashBalancesByCurrency.entries()) {
+    let valueInBase: number;
+
     if (baseCurrencyCode && currency === baseCurrencyCode) {
-      baseCurrencyLocalAmount = localAmount;
-      rawByCurrency.set(currency, localAmount);
-      continue;
+      valueInBase = localAmount;
+    } else {
+      const exchangeRate = state.exchangeRatesByCurrency.get(currency);
+      if (exchangeRate === undefined) continue;
+      valueInBase = localAmount * exchangeRate;
     }
 
-    const exchangeRate = state.exchangeRatesByCurrency.get(currency);
-    if (exchangeRate === undefined) continue;
-
-    const rawValueInBase = localAmount * exchangeRate;
-    rawByCurrency.set(currency, rawValueInBase);
-    rawNonBaseTotal += rawValueInBase;
+    state.cashBalancesByCurrency.set(currency, valueInBase);
+    total += valueInBase;
   }
 
-  let nonBaseScale = 1;
-  if (hasBaseCashBalance && baseCurrencyCode && rawNonBaseTotal > 0) {
-    const targetNonBaseInBase = Math.max(0, state.cashBalance - baseCurrencyLocalAmount);
-    nonBaseScale = targetNonBaseInBase / rawNonBaseTotal;
-  }
-
-  for (const [currency, rawValueInBase] of rawByCurrency.entries()) {
-    if (baseCurrencyCode && currency !== baseCurrencyCode) {
-      state.cashBalancesByCurrency.set(currency, rawValueInBase * nonBaseScale);
-      continue;
-    }
-
-    state.cashBalancesByCurrency.set(currency, rawValueInBase);
-  }
+  // Fallback to broker BASE cash only when we have no per-currency balances yet.
+  state.cashBalance = state.localCashBalancesByCurrency.size > 0
+    ? total
+    : (state.brokerCashBalance ?? 0);
 };
 
 const recomputePositionBaseValues = (state: PortfolioState): void => {
@@ -118,11 +105,11 @@ export const createPortfolioProjection = (now = () => Date.now()): PortfolioProj
     positionsMarketValue: 0,
     positionsUnrealizedPnL: 0,
     cashBalance: 0,
+    brokerCashBalance: null,
     cashBalancesByCurrency: new Map<string, number>(),
     localCashBalancesByCurrency: new Map<string, number>(),
     exchangeRatesByCurrency: new Map<string, number>(),
     baseCurrencyCode: null,
-    hasBaseCashBalance: false,
     initialLoadComplete: false,
     lastPortfolioUpdateAt: now(),
     positionsPendingFxCount: 0,
@@ -186,14 +173,12 @@ export const createPortfolioProjection = (now = () => Date.now()): PortfolioProj
     const nextValue = Number.isFinite(parsed) ? parsed : 0;
 
     if (currency === "BASE") {
-      state.cashBalance = nextValue;
-      state.hasBaseCashBalance = true;
-      recomputeCashBalancesInBase(state);
+      state.brokerCashBalance = nextValue;
     } else if (currency) {
       state.localCashBalancesByCurrency.set(currency, nextValue);
-      recomputeCashBalancesInBase(state);
     }
 
+    recomputeCashBalancesInBase(state);
     state.lastPortfolioUpdateAt = now();
   };
 
