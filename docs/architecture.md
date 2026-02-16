@@ -107,7 +107,12 @@ Zustand store with single broker instance:
 type AppState = {
   broker: Broker
   connectionStatus: "disconnected" | "connecting" | "connected" | "error"
+  connectionHealth: "healthy" | "degraded" | "down"
   error: string | null
+  retryAttempt: number
+  nextRetryAt: number | null
+  statusHistory: StatusEvent[]
+  statusHistoryIndex: number
 
   positions: Position[]
   positionsMarketValue: number
@@ -129,6 +134,10 @@ type AppState = {
 
   connect: () => Promise<void>
   disconnect: () => Promise<void>
+  startAutoConnect: () => void
+  stopAutoConnect: () => void
+  selectOlderStatus: () => void
+  selectNewerStatus: () => void
   subscribePortfolio: () => () => void
   setDisplayCurrencyPreference: (preference: "BASE" | string) => void
   cycleDisplayCurrency: (direction: "next" | "prev") => void
@@ -138,21 +147,27 @@ type AppState = {
 The store bridges broker events to React components. When `subscribePortfolio()` callback fires, it updates state, triggering component re-renders.
 The store also resolves display currency on each portfolio update (deriving available currencies from positions and cash, falling back to base with a warning if the preferred currency is not convertible).
 The store emits `state.snapshot` debug logs after applying portfolio updates, including base currency, display currency, and pending FX counts.
+Connection flow is auto-driven: the app starts an immediate connect attempt and retries forever with capped exponential backoff (`1s, 2s, 4s, 8s, 16s, 30s`).
+Transport (`connectionStatus`) and health (`connectionHealth`) are modeled separately so broker connectivity events (for example code `1100`) can degrade health while transport remains connected.
 
 UI components use selector-based Zustand subscriptions (`useStore((s) => s.field)`) to minimize re-renders.
 
 **Shared primitives (`src/state/types.ts`):**
 - `ConnectionStatus` — union of `"disconnected" | "connecting" | "connected" | "error"`, shared across store and UI.
+- `ConnectionHealth` — union of `"healthy" | "degraded" | "down"`, shared across store and UI.
 
 ### 4. TUI Components (`src/tui/`)
 
 **App.tsx** - Root component:
-- Keyboard handling: `c` to connect, `q` to quit, `[`/`]` to cycle display currency
-- Status indicator (green/yellow/red)
-- Renders `PortfolioView` when connected
+- Starts auto-connect on mount and stops it on teardown/quit
+- Keyboard handling: `q` to quit, `[`/`]` to cycle display currency, `1/2/3` to focus status/portfolio/cash panels, `↑/↓` to browse status history while status panel is focused
+- Top status area has a title row, a concise global status row (`transport`, `health`, `data age`, `retry`), and a secondary row with status focus + status-event history context
+- Portfolio and cash focus markers (`>[2] Portfolio<`, `>[3] Cash<`) are rendered directly in their section headers
+- Keyboard help is documented in [`README.md`](../README.md) rather than rendered inline in the TUI
+- Renders `PortfolioView` if connected or if a previous portfolio snapshot exists (stale/degraded context is preserved during reconnects)
 
 **PortfolioView.tsx** - Portfolio display:
-- Subscribes to portfolio updates on mount
+- Subscribes to portfolio updates only while transport is connected and re-subscribes on reconnect
 - Fixed-width column table layout with CCY column showing each position's local currency
 - Non-base currency codes highlighted in yellow
 - Color-coded unrealized P&L (green positive, red negative)
@@ -161,7 +176,7 @@ UI components use selector-based Zustand subscriptions (`useStore((s) => s.field
 - Positions with pending FX show "pending" for market value and blank % Port
 - Currency status line showing base currency, display currency (if different), and pending FX count
 - Warning line when display currency falls back to base
-- Recency indicator ("Updated X ago") with stale detection at 3 minutes
+- Data freshness is shown in the global top status bar (`data: fresh/stale ...`)
 
 ## Data Flow
 

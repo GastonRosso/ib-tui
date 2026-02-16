@@ -20,15 +20,15 @@ sequenceDiagram
         CLI->>CLI: configureLogging(...)
     end
     CLI->>App: render(<App />)
-    Note over App: App waits for keyboard input
-
-    User->>App: Press c
+    App->>Store: startAutoConnect()
+    Store->>Store: autoConnectEnabled = true
     App->>Store: connect()
     Store->>Broker: broker.connect()
     Broker->>IB: api.connect(clientId)
     IB-->>Broker: nextValidId
     Broker-->>Store: connect() resolves
     Store->>Store: connectionStatus = "connected"
+    Store->>Store: connectionHealth = "healthy"
 
     App->>App: MainView renders PortfolioView
     App->>Store: subscribePortfolio()
@@ -83,19 +83,25 @@ sequenceDiagram
 2. [src/index.ts:25](../src/index.ts) and [src/index.ts:26](../src/index.ts) parse `--log-file` / `--log-level`.
 3. [src/index.ts:41](../src/index.ts) configures file logging when requested.
 4. [src/index.ts:63](../src/index.ts) renders Ink with `<App />`.
-5. [src/state/store.ts:26](../src/state/store.ts) creates a single broker instance (`new IBKRBroker()`).
-6. [src/tui/App.tsx:13](../src/tui/App.tsx) registers keyboard handlers (`c` connect, `q` quit).
-7. [src/tui/App.tsx:17](../src/tui/App.tsx) calls `connect()` when `c` is pressed from disconnected/error states.
-8. [src/state/store.ts:38](../src/state/store.ts) moves status to `"connecting"`.
-9. [src/broker/ibkr/IBKRBroker.ts:62](../src/broker/ibkr/IBKRBroker.ts) creates `IBApi`; [src/broker/ibkr/IBKRBroker.ts:67](../src/broker/ibkr/IBKRBroker.ts) wires event handlers.
-10. [src/broker/ibkr/IBKRBroker.ts:74](../src/broker/ibkr/IBKRBroker.ts) waits for `nextValidId` to resolve connection.
-11. [src/state/store.ts:57](../src/state/store.ts) sets status to `"connected"`.
-12. [src/tui/App.tsx:54](../src/tui/App.tsx) now renders `PortfolioView`.
-13. [src/tui/PortfolioView.tsx:172](../src/tui/PortfolioView.tsx) mount effect calls `subscribePortfolio()`.
-14. [src/state/store.ts:83](../src/state/store.ts) delegates to `broker.subscribePortfolio(...)`.
-15. [src/broker/ibkr/IBKRBroker.ts:137](../src/broker/ibkr/IBKRBroker.ts) builds portfolio subscription through `createPortfolioSubscription(...)`.
-16. [src/broker/ibkr/portfolio/createPortfolioSubscription.ts:109](../src/broker/ibkr/portfolio/createPortfolioSubscription.ts) to [src/broker/ibkr/portfolio/createPortfolioSubscription.ts:113](../src/broker/ibkr/portfolio/createPortfolioSubscription.ts) register IB event listeners.
-17. [src/broker/ibkr/portfolio/createPortfolioSubscription.ts:116](../src/broker/ibkr/portfolio/createPortfolioSubscription.ts) starts `reqAccountUpdates(true, accountId)`.
+5. `src/state/store.ts` creates a single broker instance (`new IBKRBroker()`).
+6. `src/tui/App.tsx` mount effect calls `startAutoConnect()` immediately.
+7. `src/state/store.ts` sets `connectionStatus="connecting"` and installs broker status/disconnect listeners.
+8. `src/broker/ibkr/IBKRBroker.ts` creates `IBApi`, wires handlers, and calls `api.connect(clientId)`.
+9. `src/broker/ibkr/IBKRBroker.ts` resolves connect on `nextValidId`.
+10. `src/state/store.ts` sets `connectionStatus="connected"` and `connectionHealth="healthy"`.
+11. `src/tui/App.tsx` renders `PortfolioView`.
+12. `src/tui/PortfolioView.tsx` subscribes to portfolio stream only while transport is connected.
+13. `src/state/store.ts` delegates to `broker.subscribePortfolio(...)`.
+14. `src/broker/ibkr/IBKRBroker.ts` builds portfolio subscription through `createPortfolioSubscription(...)`.
+15. `src/broker/ibkr/portfolio/createPortfolioSubscription.ts` registers IB event listeners and starts `reqAccountUpdates(true, accountId)`.
+
+### Transport vs Health
+
+1. `connectionStatus` models socket transport lifecycle (`disconnected`, `connecting`, `connected`, `error`).
+2. `connectionHealth` models broker/network quality (`healthy`, `degraded`, `down`).
+3. Broker status code `1100` degrades health without forcing transport to `disconnected`.
+4. Recovery codes (`1101`, `1102`, `2104`, `2106`, `2158`) restore health to `healthy`.
+5. Unexpected transport disconnect triggers auto-retry with capped exponential backoff and keeps the last portfolio snapshot visible.
 
 ### Broker Identity and Account Selection
 
@@ -150,4 +156,4 @@ sequenceDiagram
 4. [src/tui/PortfolioView.tsx:173](../src/tui/PortfolioView.tsx) to [src/tui/PortfolioView.tsx:175](../src/tui/PortfolioView.tsx) cleanup unsubscribes on unmount.
 5. [src/broker/ibkr/portfolio/createPortfolioSubscription.ts:118](../src/broker/ibkr/portfolio/createPortfolioSubscription.ts) to [src/broker/ibkr/portfolio/createPortfolioSubscription.ts:127](../src/broker/ibkr/portfolio/createPortfolioSubscription.ts) removes listeners and stops `reqAccountUpdates`.
 6. [src/broker/ibkr/IBKRBroker.ts:35](../src/broker/ibkr/IBKRBroker.ts) to [src/broker/ibkr/IBKRBroker.ts:39](../src/broker/ibkr/IBKRBroker.ts) handles unexpected broker disconnect and fans out callbacks.
-7. [src/state/store.ts:44](../src/state/store.ts) to [src/state/store.ts:55](../src/state/store.ts) receives that callback and resets state to `"disconnected"` with `"Connection lost"`.
+7. `src/state/store.ts` receives that callback, marks transport `disconnected`, health `down`, and preserves the last portfolio snapshot while auto-retry runs (if enabled).

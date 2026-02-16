@@ -59,8 +59,13 @@ describe("PortfolioView", () => {
   const createBaseState = (): AppState => ({
     broker: createMockBroker(),
     connectionStatus: "connected",
+    connectionHealth: "healthy",
     error: null,
     brokerStatus: null,
+    retryAttempt: 0,
+    nextRetryAt: null,
+    statusHistory: [],
+    statusHistoryIndex: 0,
     positions: [],
     positionsMarketValue: 0,
     positionsUnrealizedPnL: 0,
@@ -80,6 +85,10 @@ describe("PortfolioView", () => {
     displayCurrencyWarning: null,
     connect: async () => undefined,
     disconnect: async () => undefined,
+    startAutoConnect: () => {},
+    stopAutoConnect: () => {},
+    selectOlderStatus: () => {},
+    selectNewerStatus: () => {},
     setConnectionStatus: () => {},
     setError: () => {},
     subscribePortfolio: mockSubscribe,
@@ -95,6 +104,95 @@ describe("PortfolioView", () => {
 
   afterEach(() => {
     vi.restoreAllMocks();
+  });
+
+  it("subscribes only when connection is connected", () => {
+    mockUseStore.mockImplementation((selector) => {
+      const state: AppState = {
+        ...createBaseState(),
+        connectionStatus: "disconnected",
+        subscribePortfolio: mockSubscribe,
+      };
+      return selector ? selector(state) : state;
+    });
+
+    render(<PortfolioView />);
+    expect(mockSubscribe).not.toHaveBeenCalled();
+  });
+
+  it("re-subscribes when connection transitions back to connected", async () => {
+    let state: AppState = {
+      ...createBaseState(),
+      connectionStatus: "disconnected",
+      subscribePortfolio: mockSubscribe,
+    };
+
+    mockUseStore.mockImplementation((selector) =>
+      selector ? selector(state) : state
+    );
+
+    const app = render(<PortfolioView />);
+    expect(mockSubscribe).not.toHaveBeenCalled();
+
+    state = { ...state, connectionStatus: "connected" };
+    app.rerender(<PortfolioView />);
+    await vi.waitFor(() => {
+      expect(mockSubscribe).toHaveBeenCalledTimes(1);
+    });
+
+    state = { ...state, connectionStatus: "disconnected" };
+    app.rerender(<PortfolioView />);
+    await vi.waitFor(() => {
+      expect(mockUnsubscribe).toHaveBeenCalledTimes(1);
+    });
+  });
+
+  it("renders panel labels for portfolio and cash", () => {
+    mockUseStore.mockImplementation((selector) => {
+      const state: AppState = {
+        ...createBaseState(),
+        positions: [createMockPosition()],
+        positionsMarketValue: 15050,
+        totalEquity: 20050,
+        cashBalance: 5000,
+        baseCurrencyCode: "USD",
+        subscribePortfolio: mockSubscribe,
+        initialLoadComplete: true,
+        lastPortfolioUpdateAt: Date.now(),
+      };
+      return selector ? selector(state) : state;
+    });
+
+    const { lastFrame } = render(<PortfolioView />);
+    const frame = lastFrame() ?? "";
+
+    expect(frame).toContain("[2] Portfolio");
+    expect(frame).toContain("[3] Cash");
+  });
+
+  it("renders focused panel indicators in section headers", () => {
+    mockUseStore.mockImplementation((selector) => {
+      const state: AppState = {
+        ...createBaseState(),
+        positions: [createMockPosition()],
+        positionsMarketValue: 15050,
+        totalEquity: 20050,
+        cashBalance: 5000,
+        baseCurrencyCode: "USD",
+        subscribePortfolio: mockSubscribe,
+        initialLoadComplete: true,
+        lastPortfolioUpdateAt: Date.now(),
+      };
+      return selector ? selector(state) : state;
+    });
+
+    const { lastFrame } = render(
+      <PortfolioView isPortfolioFocused isCashFocused />
+    );
+    const frame = lastFrame() ?? "";
+
+    expect(frame).toContain(">[2] Portfolio<");
+    expect(frame).toContain(">[3] Cash<");
   });
 
   it("renders loading state when no positions", () => {
@@ -349,7 +447,7 @@ describe("PortfolioView", () => {
     expect(frame).toContain("$1,000.00");
   });
 
-  it("shows recency indicator with Updated text", () => {
+  it("does not render duplicate Updated indicator in portfolio header", () => {
     const now = Date.now();
     vi.spyOn(Date, "now").mockReturnValue(now);
 
@@ -369,8 +467,8 @@ describe("PortfolioView", () => {
     const { lastFrame } = render(<PortfolioView />);
     const frame = lastFrame();
 
-    expect(frame).toContain("Updated");
-    expect(frame).toContain("ago");
+    expect(frame).not.toContain("Updated");
+    expect(frame).not.toContain("Stale -");
   });
 
   it("renders colored countdown to close when market is open", () => {

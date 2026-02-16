@@ -4,7 +4,7 @@ import { useStore } from "../state/store.js";
 import type { Position } from "../broker/types.js";
 import { resolveMarketHours, formatMarketHoursCountdown } from "../broker/ibkr/market-hours/index.js";
 
-const STALE_THRESHOLD_MS = 180_000;
+export const STALE_THRESHOLD_MS = 180_000;
 
 const COLUMNS = {
   ticker: 8,
@@ -67,14 +67,6 @@ const padRight = (str: string, width: number): string => {
 
 const padLeft = (str: string, width: number): string => {
   return str.length >= width ? str.slice(0, width) : " ".repeat(width - str.length) + str;
-};
-
-const formatAge = (ms: number): string => {
-  const seconds = Math.floor(ms / 1000);
-  if (seconds < 60) return `${seconds}s ago`;
-  const minutes = Math.floor(seconds / 60);
-  const remainingSeconds = seconds % 60;
-  return `${minutes}m ${remainingSeconds}s ago`;
 };
 
 const HeaderRow: React.FC = () => (
@@ -280,26 +272,6 @@ const SummaryRow: React.FC<{
   );
 };
 
-const RecencyIndicator: React.FC<{ lastUpdateAt: number | null }> = ({ lastUpdateAt }) => {
-  const [now, setNow] = useState(Date.now());
-
-  useEffect(() => {
-    const interval = setInterval(() => setNow(Date.now()), 1000);
-    return () => clearInterval(interval);
-  }, []);
-
-  if (lastUpdateAt === null) return null;
-
-  const ageMs = Math.max(0, now - lastUpdateAt);
-  const isStale = ageMs >= STALE_THRESHOLD_MS;
-
-  return (
-    <Text dimColor={!isStale} color={isStale ? "yellow" : undefined}>
-      {isStale ? "Stale - " : ""}Updated {formatAge(ageMs)}
-    </Text>
-  );
-};
-
 const CurrencyStatusLine: React.FC<{
   baseCurrencyCode: string | null;
   displayCurrencyCode: string | null;
@@ -326,7 +298,11 @@ const CurrencyStatusLine: React.FC<{
   );
 };
 
-export const PortfolioView: React.FC = () => {
+export const PortfolioView: React.FC<{
+  isPortfolioFocused?: boolean;
+  isCashFocused?: boolean;
+}> = ({ isPortfolioFocused = false, isCashFocused = false }) => {
+  const connectionStatus = useStore((s) => s.connectionStatus);
   const positions = useStore((s) => s.positions);
   const totalEquity = useStore((s) => s.totalEquity);
   const cashBalance = useStore((s) => s.cashBalance);
@@ -335,7 +311,6 @@ export const PortfolioView: React.FC = () => {
   const baseCurrencyCode = useStore((s) => s.baseCurrencyCode);
   const subscribePortfolio = useStore((s) => s.subscribePortfolio);
   const initialLoadComplete = useStore((s) => s.initialLoadComplete);
-  const lastPortfolioUpdateAt = useStore((s) => s.lastPortfolioUpdateAt);
   const positionsMarketValue = useStore((s) => s.positionsMarketValue);
   const positionsUnrealizedPnL = useStore((s) => s.positionsUnrealizedPnL);
   const displayCurrencyCode = useStore((s) => s.displayCurrencyCode);
@@ -351,9 +326,10 @@ export const PortfolioView: React.FC = () => {
   }, []);
 
   useEffect(() => {
+    if (connectionStatus !== "connected") return;
     const unsubscribe = subscribePortfolio();
     return () => unsubscribe();
-  }, [subscribePortfolio]);
+  }, [connectionStatus, subscribePortfolio]);
 
   const cashHoldings = deriveCashHoldings(
     cashBalance,
@@ -381,11 +357,10 @@ export const PortfolioView: React.FC = () => {
 
   return (
     <Box flexDirection="column">
-      <Box marginBottom={1} gap={2}>
+      <Box marginBottom={1}>
         <Text color="cyan" bold>
-          Portfolio
+          {isPortfolioFocused ? ">[2] Portfolio<" : "[2] Portfolio"}
         </Text>
-        <RecencyIndicator lastUpdateAt={lastPortfolioUpdateAt} />
       </Box>
       <CurrencyStatusLine
         baseCurrencyCode={baseCurrencyCode}
@@ -424,7 +399,7 @@ export const PortfolioView: React.FC = () => {
           <DividerRow />
           <Box marginBottom={1}>
             <Text color="cyan" bold>
-              Cash
+              {isCashFocused ? ">[3] Cash<" : "[3] Cash"}
             </Text>
           </Box>
           <CashHeaderRow />
