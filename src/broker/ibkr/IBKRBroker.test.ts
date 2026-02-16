@@ -105,6 +105,16 @@ describe("IBKRBroker", () => {
         })
       );
     });
+
+    it("does not write API errors to stderr", () => {
+      const stderrSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+      try {
+        mockApi.emit(EventName.error, new Error("Permission denied"), 201, 700001);
+        expect(stderrSpy).not.toHaveBeenCalled();
+      } finally {
+        stderrSpy.mockRestore();
+      }
+    });
   });
 
   describe("subscribePortfolio", () => {

@@ -84,7 +84,6 @@ export class IBKRBroker implements Broker {
         code,
         reqId,
       });
-      console.error(`IBKR Error [${code}] reqId=${reqId}:`, err.message);
     });
 
     this.api.on(EventName.info, (message: string, code: number) => {
